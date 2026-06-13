@@ -1,0 +1,29 @@
+{
+  "skills": [
+    {"id": "attack", "name": "Attack", "kind": "damage", "target": "enemy", "mp_cost": 0, "power": 0},
+    {"id": "heavy", "name": "Heavy Strike", "kind": "damage", "target": "enemy", "mp_cost": 8, "power": 14},
+    {"id": "fire", "name": "Fire Charm", "kind": "damage", "target": "enemy", "mp_cost": 10, "power": 20},
+    {"id": "defend", "name": "Defend", "kind": "defend", "target": "self", "mp_cost": 0},
+    {"id": "heal", "name": "Heal", "kind": "heal", "target": "ally", "mp_cost": 6, "min_heal": 18, "max_heal": 28}
+  ],
+  "items": [
+    {"id": "potion", "name": "Small Potion", "heal": 35, "price": 10, "description": "Restores 35 HP in battle."},
+    {"id": "hi_potion", "name": "Hi-Potion", "heal": 70, "price": 24, "description": "Restores 70 HP in battle."}
+  ],
+  "monsters": [
+    {"id": "slime", "name": "Green Slime", "level": 1, "max_hp": 75, "max_mp": 10, "attack": 13, "defense": 3, "speed": 7, "exp": 12, "gold": 8, "drops": {"potion": 1}, "skills": ["attack"]},
+    {"id": "fox", "name": "Mountain Fox", "level": 2, "max_hp": 92, "max_mp": 18, "attack": 16, "defense": 4, "speed": 13, "exp": 18, "gold": 12, "drops": {"potion": 2}, "skills": ["attack", "heavy"]},
+    {"id": "bandit", "name": "Wild Bandit", "level": 3, "max_hp": 135, "max_mp": 26, "attack": 20, "defense": 7, "speed": 10, "exp": 30, "gold": 22, "drops": {"hi_potion": 1}, "skills": ["attack", "heavy", "heal"]}
+  ],
+  "quests": [
+    {"id": "slime_hunter", "name": "Slime Hunter", "target_monster": "slime", "required_kills": 2, "reward_exp": 20, "reward_gold": 15, "reward_items": {"potion": 1}},
+    {"id": "fox_trouble", "name": "Fox Trouble", "target_monster": "fox", "required_kills": 1, "reward_exp": 28, "reward_gold": 20, "reward_items": {"hi_potion": 1}}
+  ],
+  "encounters": [
+    {"id": "slime", "name": "Single Slime", "monsters": ["slime"]},
+    {"id": "fox", "name": "Single Fox", "monsters": ["fox"]},
+    {"id": "bandit", "name": "Single Bandit", "monsters": ["bandit"]},
+    {"id": "forest", "name": "Forest Patrol", "monsters": ["slime", "fox"]},
+    {"id": "camp", "name": "Bandit Camp", "monsters": ["bandit", "fox"]}
+  ]
+}
