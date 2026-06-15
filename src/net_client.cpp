@@ -9,6 +9,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -23,14 +26,6 @@ constexpr unsigned short kPort = 7878;
 enum class Language {
     Chinese,
     English,
-};
-
-struct MenuItem
-{
-    std::string zh;
-    std::string en;
-    bool requires_login = false;
-    std::function<std::string()> build_command;
 };
 
 class WinsockRuntime
@@ -56,6 +51,93 @@ void setup_console()
 {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+}
+
+std::string lang_config_path()
+{
+    const char* home = nullptr;
+    home = std::getenv("USERPROFILE");
+    if (!home || home[0] == '\0') {
+        home = std::getenv("HOMEDRIVE");
+        const char* homepath = std::getenv("HOMEPATH");
+        static std::string combined;
+        if (home && homepath) {
+            combined = std::string(home) + homepath;
+            return combined + "/.mmdemo_lang";
+        }
+    }
+    if (home && home[0] != '\0') {
+        return std::string(home) + "/.mmdemo_lang";
+    }
+    return ".mmdemo_lang";
+}
+
+void save_language_preference(Language language)
+{
+    try {
+        std::ofstream file(lang_config_path());
+        if (file.is_open()) {
+            file << (language == Language::Chinese ? "zh" : "en") << "\n";
+        }
+    }
+    catch (...) {
+        // 静默忽略保存失败
+    }
+}
+
+Language load_or_choose_language()
+{
+    // 尝试从配置文件读取
+    try {
+        std::ifstream file(lang_config_path());
+        if (file.is_open()) {
+            std::string line;
+            if (std::getline(file, line)) {
+                std::string trimmed;
+                for (char c : line) {
+                    if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+                        trimmed += c;
+                    }
+                }
+                if (trimmed == "zh" || trimmed == "ZH") {
+                    return Language::Chinese;
+                }
+                if (trimmed == "en" || trimmed == "EN") {
+                    return Language::English;
+                }
+            }
+        }
+    }
+    catch (...) {
+        // 读取失败，走选择流程
+    }
+
+    // 首次运行，让用户选择
+    while (true) {
+        std::cout << "Select language / 选择语言:\n"
+                  << "  1. 中文\n"
+                  << "  2. English\n"
+                  << "> ";
+        std::string input;
+        std::getline(std::cin, input);
+        while (!input.empty() && (input.back() == ' ' || input.back() == '\t' || input.back() == '\r')) {
+            input.pop_back();
+        }
+        size_t start = 0;
+        while (start < input.size() && (input[start] == ' ' || input[start] == '\t')) {
+            ++start;
+        }
+        input = input.substr(start);
+        if (input == "1" || input == "zh" || input == "ZH") {
+            save_language_preference(Language::Chinese);
+            return Language::Chinese;
+        }
+        if (input == "2" || input == "en" || input == "EN") {
+            save_language_preference(Language::English);
+            return Language::English;
+        }
+        std::cout << "Invalid choice.\n";
+    }
 }
 
 bool send_all(SOCKET socket, const std::string& text)
@@ -119,124 +201,199 @@ std::string append_arg(std::string command, const std::string& arg)
     return command;
 }
 
-Language choose_language()
+// 分类菜单项：{编号, 中文, 英文, build_command}
+struct CatItem
 {
-    while (true) {
-        std::cout << "Select language / 选择语言:\n"
-                  << "  1. 中文\n"
-                  << "  2. English\n"
-                  << "> ";
-        std::string input;
-        std::getline(std::cin, input);
-        input = trim_copy(input);
-        if (input == "1" || input == "zh" || input == "ZH") {
-            return Language::Chinese;
-        }
-        if (input == "2" || input == "en" || input == "EN") {
-            return Language::English;
-        }
-        std::cout << "Invalid choice.\n";
-    }
+    int id;
+    std::string zh;
+    std::string en;
+    bool requires_login = false;
+    std::function<std::string()> build_command;
+};
+
+struct CatGroup
+{
+    const char* zh_title;
+    const char* en_title;
+    std::vector<CatItem> items;
+};
+
+void clear_screen()
+{
+    system("cls");
 }
 
-std::vector<MenuItem> make_menu(Language language, bool logged_in)
+// 格式化一个菜单项为固定宽度字符串
+std::string fmt_item(Language lang, int id, const char* zh, const char* en, int width)
 {
-    (void)language;
-    std::vector<MenuItem> items;
+    std::string s = " " + std::to_string(id) + "." + text(lang, zh, en);
+    if (static_cast<int>(s.size()) < width) {
+        s.append(width - s.size(), ' ');
+    }
+    return s;
+}
+
+void print_categories(Language lang, const std::vector<CatGroup>& groups, bool logged_in)
+{
+    clear_screen();
+    std::cout << "==== " << text(lang, "可用命令", "Available Commands") << " ====";
+    std::cout << "  " << text(lang, logged_in ? "已登录" : "未登录", logged_in ? "logged in" : "not logged in") << "\n\n";
+
+    constexpr int kCols = 3;
+    constexpr int kColWidth = 26;
+
+    for (const auto& g : groups) {
+        std::cout << "-- " << text(lang, g.zh_title, g.en_title) << " --\n";
+        const size_t n = g.items.size();
+        const size_t rows = (n + kCols - 1) / kCols;
+        for (size_t r = 0; r < rows; ++r) {
+            for (int c = 0; c < kCols; ++c) {
+                const size_t idx = r + c * rows;
+                if (idx < n) {
+                    const auto& it = g.items[idx];
+                    std::cout << fmt_item(lang, it.id, it.zh.c_str(), it.en.c_str(), kColWidth);
+                }
+            }
+            std::cout << "\n";
+        }
+        std::cout << "\n";
+    }
+    std::cout << text(lang, "请选择数字: ", "Choose a number: ");
+}
+
+// 根据编号查找菜单项
+const CatItem* find_item(const std::vector<CatGroup>& groups, int id)
+{
+    for (const auto& g : groups) {
+        for (const auto& it : g.items) {
+            if (it.id == id) return &it;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<CatGroup> make_categories(Language language, bool logged_in,
+                                      std::function<void()> toggle_lang_callback = {})
+{
+    int next_id = 0;
+    auto next = [&next_id] { return ++next_id; };
 
     if (!logged_in) {
-        items.push_back({ "登录玩家", "Login player", false, [language] {
-                             const std::string name = ask(language, "玩家名: ", "Player name: ");
-                             return name.empty() ? "" : "login " + name;
-                         } });
-        items.push_back({ "查看帮助", "Show help", false, [] { return "help"; } });
-        items.push_back({ "查看怪物/遭遇", "List monsters/encounters", false, [] { return "monsters"; } });
-        items.push_back({ "查看道具", "List items", false, [] { return "items"; } });
-        items.push_back({ "查看技能", "List skills", false, [] { return "skills"; } });
-        items.push_back({ "查看任务", "List quests", false, [] { return "quests"; } });
-        items.push_back({ "查看商店", "List shop", false, [] { return "shop"; } });
-        items.push_back({ "读取存档", "Load players", false, [] { return "load"; } });
-        items.push_back({ "退出", "Quit", false, [] { return "quit"; } });
-        return items;
+        std::vector<CatGroup> groups;
+        {
+            CatGroup g{ "账号", "Account" };
+            g.items.push_back({ next(), "登录玩家", "Login player", false, [language] {
+                const std::string name = ask(language, "玩家名: ", "Player name: ");
+                return name.empty() ? "" : "login " + name;
+            } });
+            g.items.push_back({ next(), "查看帮助", "Show help", false, [] { return "help"; } });
+            groups.push_back(std::move(g));
+        }
+        {
+            CatGroup g{ "信息查询", "Info" };
+            g.items.push_back({ next(), "查看怪物", "Monsters", false, [] { return "monsters"; } });
+            g.items.push_back({ next(), "查看道具", "Items", false, [] { return "items"; } });
+            g.items.push_back({ next(), "查看技能", "Skills", false, [] { return "skills"; } });
+            g.items.push_back({ next(), "查看任务", "Quests", false, [] { return "quests"; } });
+            g.items.push_back({ next(), "查看商店", "Shop", false, [] { return "shop"; } });
+            groups.push_back(std::move(g));
+        }
+        {
+            CatGroup g{ "系统", "System" };
+            g.items.push_back({ next(), "读取存档", "Load", false, [] { return "load"; } });
+            g.items.push_back({ next(), "切换语言", "Switch lang", false, [toggle_lang_callback] {
+                if (toggle_lang_callback) toggle_lang_callback();
+                return std::string("__lang_toggle__");
+            } });
+            g.items.push_back({ next(), "退出", "Quit", false, [] { return "quit"; } });
+            groups.push_back(std::move(g));
+        }
+        return groups;
     }
 
-    items.push_back({ "开始 PVE", "Start PVE", true, [language] {
-                         const std::string encounter =
-                           ask_optional(language, "遭遇 id，可留空默认 slime: ", "Encounter id, empty for slime: ");
-                         return append_arg("pve", encounter);
-                     } });
-    items.push_back({ "加入 PVP 队列", "Queue for PVP", true, [] { return "queue"; } });
-    items.push_back({ "普通攻击", "Attack", true, [language] {
-                         const std::string target =
-                           ask_optional(language, "目标，可留空自动选择: ", "Target, empty for auto: ");
-                         return append_arg("attack", target);
-                     } });
-    items.push_back({ "重击", "Heavy strike", true, [language] {
-                         const std::string target =
-                           ask_optional(language, "目标，可留空自动选择: ", "Target, empty for auto: ");
-                         return append_arg("heavy", target);
-                     } });
-    items.push_back({ "火符", "Fire charm", true, [language] {
-                         const std::string target =
-                           ask_optional(language, "目标，可留空自动选择: ", "Target, empty for auto: ");
-                         return append_arg("fire", target);
-                     } });
-    items.push_back({ "防御", "Defend", true, [] { return "defend"; } });
-    items.push_back({ "治疗", "Heal", true, [language] {
-                         const std::string target =
-                           ask_optional(language, "目标，可留空治疗自己: ", "Target, empty for self: ");
-                         return append_arg("heal", target);
-                     } });
-    items.push_back({ "使用道具", "Use item", true, [language] {
-                         const std::string item = ask(language, "道具 id: ", "Item id: ");
-                         const std::string target =
-                           ask_optional(language, "目标，可留空自己: ", "Target, empty for self: ");
-                         return append_arg("use " + item, target);
-                     } });
-    items.push_back({ "查看背包", "Show inventory", true, [] { return "inventory"; } });
-    items.push_back({ "查看商店", "Show shop", true, [] { return "shop"; } });
-    items.push_back({ "购买道具", "Buy item", true, [language] {
-                         const std::string item = ask(language, "道具 id: ", "Item id: ");
-                         const std::string amount = ask_optional(language, "数量，可留空 1: ", "Amount, empty for 1: ");
-                         return append_arg("buy " + item, amount);
-                     } });
-    items.push_back({ "查看可接任务", "List quest templates", true, [] { return "quests"; } });
-    items.push_back({ "接取任务", "Accept quest", true, [language] {
-                         const std::string quest = ask(language, "任务 id: ", "Quest id: ");
-                         return quest.empty() ? "" : "quest accept " + quest;
-                     } });
-    items.push_back({ "查看我的任务", "List my quests", true, [] { return "quest list"; } });
-    items.push_back({ "领取任务奖励", "Claim quest", true, [language] {
-                         const std::string quest = ask(language, "任务 id: ", "Quest id: ");
-                         return quest.empty() ? "" : "quest claim " + quest;
-                     } });
-    items.push_back({ "认输", "Forfeit", true, [] { return "forfeit"; } });
-    items.push_back({ "查看玩家", "List players", true, [] { return "players"; } });
-    items.push_back({ "查看怪物/遭遇", "List monsters/encounters", true, [] { return "monsters"; } });
-    items.push_back({ "查看道具", "List items", true, [] { return "items"; } });
-    items.push_back({ "查看技能", "List skills", true, [] { return "skills"; } });
-    items.push_back({ "查看服务端状态", "Show server state", true, [] { return "state"; } });
-    items.push_back({ "查看战斗日志", "Show battle log", true, [language] {
-                         const std::string battle =
-                           ask_optional(language, "战斗 id，可留空最近一场: ", "Battle id, empty for latest: ");
-                         return append_arg("log", battle);
-                     } });
-    items.push_back({ "保存存档", "Save players", true, [] { return "save"; } });
-    items.push_back({ "读取存档", "Load players", true, [] { return "load"; } });
-    items.push_back({ "登出", "Logout", true, [] { return "logout"; } });
-    items.push_back({ "退出", "Quit", true, [] { return "quit"; } });
-    return items;
-}
-
-void print_menu(Language language, const std::vector<MenuItem>& items, bool logged_in)
-{
-    std::cout << "\n==== " << text(language, "可用命令", "Available Commands") << " ====";
-    std::cout << "  " << text(language, logged_in ? "已登录" : "未登录", logged_in ? "logged in" : "not logged in")
-              << "\n";
-    for (size_t i = 0; i < items.size(); ++i) {
-        std::cout << "  " << (i + 1) << ". " << text(language, items[i].zh.c_str(), items[i].en.c_str()) << "\n";
+    // 已登录
+    std::vector<CatGroup> groups;
+    {
+        CatGroup g{ "战斗", "Battle" };
+        g.items.push_back({ next(), "开始PVE", "Start PVE", true, [language] {
+            const std::string enc = ask_optional(language, "遭遇id(空=slime): ", "Encounter (empty=slime): ");
+            return append_arg("pve", enc);
+        } });
+        g.items.push_back({ next(), "PVP排队", "PVP Queue", true, [] { return "queue"; } });
+        g.items.push_back({ next(), "攻击", "Attack", true, [language] {
+            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+            return append_arg("attack", t);
+        } });
+        g.items.push_back({ next(), "重击", "Heavy", true, [language] {
+            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+            return append_arg("heavy", t);
+        } });
+        g.items.push_back({ next(), "火符", "Fire", true, [language] {
+            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+            return append_arg("fire", t);
+        } });
+        g.items.push_back({ next(), "防御", "Defend", true, [] { return "defend"; } });
+        g.items.push_back({ next(), "治疗", "Heal", true, [language] {
+            const std::string t = ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
+            return append_arg("heal", t);
+        } });
+        g.items.push_back({ next(), "使用道具", "Use Item", true, [language] {
+            const std::string it = ask(language, "道具id: ", "Item id: ");
+            if (it.empty()) return std::string();
+            const std::string t = ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
+            return append_arg("use " + it, t);
+        } });
+        g.items.push_back({ next(), "认输", "Forfeit", true, [] { return "forfeit"; } });
+        groups.push_back(std::move(g));
     }
-    std::cout << text(language, "请选择数字: ", "Choose a number: ");
+    {
+        CatGroup g{ "背包/商店", "Bag/Shop" };
+        g.items.push_back({ next(), "查看背包", "Inventory", true, [] { return "inventory"; } });
+        g.items.push_back({ next(), "查看商店", "Shop", true, [] { return "shop"; } });
+        g.items.push_back({ next(), "购买道具", "Buy item", true, [language] {
+            const std::string it = ask(language, "道具id: ", "Item id: ");
+            if (it.empty()) return std::string();
+            const std::string n = ask_optional(language, "数量(空=1): ", "Amount (empty=1): ");
+            return append_arg("buy " + it, n);
+        } });
+        groups.push_back(std::move(g));
+    }
+    {
+        CatGroup g{ "任务", "Quest" };
+        g.items.push_back({ next(), "可接任务", "Templates", true, [] { return "quests"; } });
+        g.items.push_back({ next(), "接取任务", "Accept", true, [language] {
+            const std::string q = ask(language, "任务id: ", "Quest id: ");
+            return q.empty() ? "" : "quest accept " + q;
+        } });
+        g.items.push_back({ next(), "我的任务", "My quests", true, [] { return "quest list"; } });
+        g.items.push_back({ next(), "领取奖励", "Claim", true, [language] {
+            const std::string q = ask(language, "任务id: ", "Quest id: ");
+            return q.empty() ? "" : "quest claim " + q;
+        } });
+        groups.push_back(std::move(g));
+    }
+    {
+        CatGroup g{ "信息", "Info" };
+        g.items.push_back({ next(), "玩家列表", "Players", true, [] { return "players"; } });
+        g.items.push_back({ next(), "怪物列表", "Monsters", true, [] { return "monsters"; } });
+        g.items.push_back({ next(), "道具列表", "Items", true, [] { return "items"; } });
+        g.items.push_back({ next(), "技能列表", "Skills", true, [] { return "skills"; } });
+        g.items.push_back({ next(), "服务端状态", "ServerState", true, [] { return "state"; } });
+        g.items.push_back({ next(), "战斗日志", "BattleLog", true, [language] {
+            const std::string b = ask_optional(language, "战斗id(空=最近): ", "Battle id (empty=latest): ");
+            return append_arg("log", b);
+        } });
+        groups.push_back(std::move(g));
+    }
+    {
+        CatGroup g{ "系统", "System" };
+        g.items.push_back({ next(), "保存存档", "Save", true, [] { return "save"; } });
+        g.items.push_back({ next(), "读取存档", "Load", true, [] { return "load"; } });
+        g.items.push_back({ next(), "登出", "Logout", true, [] { return "logout"; } });
+        g.items.push_back({ next(), "退出", "Quit", true, [] { return "quit"; } });
+        groups.push_back(std::move(g));
+    }
+    return groups;
 }
 
 int read_choice()
@@ -260,7 +417,7 @@ int main()
 {
     try {
         setup_console();
-        const Language language = choose_language();
+        Language language = load_or_choose_language();
         WinsockRuntime winsock;
 
         SOCKET socket_handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -289,16 +446,25 @@ int main()
 
         bool logged_in = false;
         while (running.load()) {
-            const auto items = make_menu(language, logged_in);
-            print_menu(language, items, logged_in);
+            auto toggle_lang = [&language] {
+                language = (language == Language::Chinese) ? Language::English : Language::Chinese;
+                save_language_preference(language);
+            };
+            const auto groups = make_categories(language, logged_in, toggle_lang);
+            print_categories(language, groups, logged_in);
             const int choice = read_choice();
-            if (choice < 1 || static_cast<size_t>(choice) > items.size()) {
+            const auto* item = find_item(groups, choice);
+            if (!item) {
                 std::cout << text(language, "无效选择。\n", "Invalid choice.\n");
                 continue;
             }
 
-            std::string line = items[static_cast<size_t>(choice - 1)].build_command();
+            std::string line = item->build_command();
             line = trim_copy(line);
+            if (line == "__lang_toggle__") {
+                std::cout << text(language, "语言已切换。\n", "Language switched.\n");
+                continue;
+            }
             if (line.empty()) {
                 std::cout << text(language, "命令已取消。\n", "Command canceled.\n");
                 continue;
@@ -307,6 +473,12 @@ int main()
             if (!send_all(socket_handle, line + "\n")) {
                 break;
             }
+
+            // 等待服务端响应
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            std::cout << text(language, "\n按回车继续...", "\nPress Enter to continue...");
+            std::string dummy;
+            std::getline(std::cin, dummy);
 
             if (line.rfind("login ", 0) == 0) {
                 logged_in = true;
