@@ -396,6 +396,71 @@ void test_json_config_loading(TestContext& ctx)
     std::remove(player_file);
 }
 
+void test_battle_end_detection(TestContext& ctx)
+{
+    // Regression: detect_battle_end() must match the exact strings produced by
+    // Battle::finish().  The server outputs "xxx wins." (period, NOT exclamation),
+    // and there is no "Battle ends" string.  Mismatch caused the client to never
+    // exit battle mode after a normal victory (non-forfeit).
+
+    // Case 1: normal PVE win → output contains "wins." (period)
+    {
+        mm::GameServer server;
+        const std::string output = run(server, {
+                                                 "login alice",
+                                                 "pve alice slime",
+                                                 "heavy alice",
+                                                 "heavy alice",
+                                                 "heavy alice",
+                                                 "heavy alice",
+                                               });
+        expect_contains(ctx, "battle end: normal win marker", output, " wins.");
+        expect_not_contains(ctx, "battle end: no exclamation", output, "wins!");
+        expect_not_contains(ctx, "battle end: no Battle ends", output, "Battle ends");
+    }
+
+    // Case 2: forfeit → output contains "forfeits the battle" AND "wins." for winner
+    {
+        mm::GameServer server;
+        const std::string output = run(server, {
+                                                 "login alice",
+                                                 "pve alice slime",
+                                                 "forfeit alice",
+                                               });
+        expect_contains(ctx, "battle end: forfeit marker", output, "forfeits the battle");
+        expect_contains(ctx, "battle end: forfeit winner marker", output, " wins.");
+    }
+
+    // Case 3: PVP normal win → verify "wins." marker.
+    //  PVP requires both players to lock actions each round.
+    //  We interleave alice (heavy) and bob (attack) to progress the battle.
+    {
+        mm::GameServer server("test_players_pvp_end.json", 47);
+        const std::string output = run(server, {
+                                                 "login alice",
+                                                 "login bob",
+                                                 "queue alice",
+                                                 "queue bob",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                                 "heavy alice bob",
+                                                 "attack bob alice",
+                                               });
+        expect_contains(ctx, "battle end: pvp win marker", output, " wins.");
+        expect_not_contains(ctx, "battle end: pvp no Battle ends", output, "Battle ends");
+    }
+}
+
 void test_validation_errors(TestContext& ctx)
 {
     // Negative paths protect command validation and prevent accidental silent state mutation.
@@ -444,6 +509,7 @@ int main()
     test_save_and_load(ctx);
     test_json_config_loading(ctx);
     test_forfeit_logout_reconnect(ctx);
+    test_battle_end_detection(ctx);
     test_validation_errors(ctx);
 
     if (ctx.failed != 0) {
