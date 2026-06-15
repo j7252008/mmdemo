@@ -15,8 +15,7 @@
 
 namespace {
 
-enum class Language
-{
+enum class Language {
     Chinese,
     English,
 };
@@ -106,7 +105,8 @@ Language load_or_choose_language()
         std::string input;
         std::getline(std::cin, input);
         // trim
-        while (!input.empty() && (input.back() == ' ' || input.back() == '\t' || input.back() == '\r')) {
+        while (!input.empty()
+               && (input.back() == ' ' || input.back() == '\t' || input.back() == '\r')) {
             input.pop_back();
         }
         size_t start = 0;
@@ -128,7 +128,8 @@ Language load_or_choose_language()
 
 std::string trim_copy(std::string value)
 {
-    while (!value.empty() && (value.back() == ' ' || value.back() == '\t' || value.back() == '\r')) {
+    while (!value.empty()
+           && (value.back() == ' ' || value.back() == '\t' || value.back() == '\r')) {
         value.pop_back();
     }
     size_t start = 0;
@@ -201,8 +202,10 @@ void print_categories(Language lang, const std::vector<CatGroup>& groups,
     std::cout << "==== " << text(lang, "可用命令", "Available Commands") << " ====";
     if (current_player.empty()) {
         std::cout << "  " << text(lang, "未登录", "not logged in") << "\n\n";
-    } else {
-        std::cout << "  " << text(lang, "当前玩家: ", "current player: ") << current_player << "\n\n";
+    }
+    else {
+        std::cout << "  " << text(lang, "当前玩家: ", "current player: ") << current_player
+                  << "\n\n";
     }
 
     constexpr int kCols = 3;
@@ -251,9 +254,10 @@ std::vector<CatGroup> make_categories(Language language, const std::string& curr
         {
             CatGroup g{ "账号", "Account" };
             g.items.push_back({ next(), "登录玩家", "Login player", [language] {
-                const std::string name = ask(language, "玩家名: ", "Player name: ");
-                return name.empty() ? "" : "login " + name;
-            } });
+                                   const std::string name =
+                                     ask(language, "玩家名: ", "Player name: ");
+                                   return name.empty() ? "" : "login " + name;
+                               } });
             g.items.push_back({ next(), "查看帮助", "Show help", [] { return "help"; } });
             groups.push_back(std::move(g));
         }
@@ -269,13 +273,12 @@ std::vector<CatGroup> make_categories(Language language, const std::string& curr
         {
             CatGroup g{ "系统", "System" };
             g.items.push_back({ next(), "读取存档", "Load players", [] { return "load"; } });
-            g.items.push_back({ next(), "手动命令", "Manual cmd", [language] {
-                return ask(language, "命令: ", "Command: ");
-            } });
+            g.items.push_back({ next(), "手动命令", "Manual cmd",
+                                [language] { return ask(language, "命令: ", "Command: "); } });
             g.items.push_back({ next(), "切换语言", "Switch lang", [toggle_lang_callback] {
-                if (toggle_lang_callback) toggle_lang_callback();
-                return std::string("__lang_toggle__");
-            } });
+                                   if (toggle_lang_callback) toggle_lang_callback();
+                                   return std::string("__lang_toggle__");
+                               } });
             g.items.push_back({ next(), "退出", "Quit", [] { return "quit"; } });
             groups.push_back(std::move(g));
         }
@@ -287,70 +290,74 @@ std::vector<CatGroup> make_categories(Language language, const std::string& curr
     {
         CatGroup g{ "战斗", "Battle" };
         g.items.push_back({ next(), "开始PVE", "Start PVE", [language, current_player] {
-            const std::string enc = ask(language, "遭遇id(空=slime): ", "Encounter id (empty=slime): ");
-            return append_arg(with_player("pve", current_player), enc);
-        } });
-        g.items.push_back({ next(), "PVP排队", "PVP Queue", [current_player] {
-            return with_player("queue", current_player);
-        } });
+                               const std::string enc = ask(
+                                 language, "遭遇id(空=slime): ", "Encounter id (empty=slime): ");
+                               return append_arg(with_player("pve", current_player), enc);
+                           } });
+        g.items.push_back({ next(), "PVP排队", "PVP Queue",
+                            [current_player] { return with_player("queue", current_player); } });
         g.items.push_back({ next(), "攻击", "Attack", [language, current_player] {
-            const std::string t = ask(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg(with_player("attack", current_player), t);
-        } });
+                               const std::string t =
+                                 ask(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg(with_player("attack", current_player), t);
+                           } });
         g.items.push_back({ next(), "重击", "Heavy", [language, current_player] {
-            const std::string t = ask(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg(with_player("heavy", current_player), t);
-        } });
+                               const std::string t =
+                                 ask(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg(with_player("heavy", current_player), t);
+                           } });
         g.items.push_back({ next(), "火符", "Fire", [language, current_player] {
-            const std::string t = ask(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg(with_player("fire", current_player), t);
-        } });
-        g.items.push_back({ next(), "防御", "Defend", [current_player] {
-            return with_player("defend", current_player);
-        } });
+                               const std::string t =
+                                 ask(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg(with_player("fire", current_player), t);
+                           } });
+        g.items.push_back({ next(), "防御", "Defend",
+                            [current_player] { return with_player("defend", current_player); } });
         g.items.push_back({ next(), "治疗", "Heal", [language, current_player] {
-            const std::string t = ask(language, "目标(空=self): ", "Target (empty=self): ");
-            return append_arg(with_player("heal", current_player), t);
-        } });
+                               const std::string t =
+                                 ask(language, "目标(空=self): ", "Target (empty=self): ");
+                               return append_arg(with_player("heal", current_player), t);
+                           } });
         g.items.push_back({ next(), "使用道具", "Use Item", [language, current_player] {
-            const std::string it = ask(language, "道具id: ", "Item id: ");
-            if (it.empty()) return std::string();
-            const std::string t = ask(language, "目标(空=self): ", "Target (empty=self): ");
-            return append_arg(with_player("use", current_player) + " " + it, t);
-        } });
-        g.items.push_back({ next(), "认输", "Forfeit", [current_player] {
-            return with_player("forfeit", current_player);
-        } });
+                               const std::string it = ask(language, "道具id: ", "Item id: ");
+                               if (it.empty()) return std::string();
+                               const std::string t =
+                                 ask(language, "目标(空=self): ", "Target (empty=self): ");
+                               return append_arg(with_player("use", current_player) + " " + it, t);
+                           } });
+        g.items.push_back({ next(), "认输", "Forfeit",
+                            [current_player] { return with_player("forfeit", current_player); } });
         groups.push_back(std::move(g));
     }
     {
         CatGroup g{ "背包/商店", "Bag/Shop" };
         g.items.push_back({ next(), "查看背包", "Inventory", [current_player] {
-            return with_player("inventory", current_player);
-        } });
+                               return with_player("inventory", current_player);
+                           } });
         g.items.push_back({ next(), "查看商店", "Shop", [] { return "shop"; } });
         g.items.push_back({ next(), "购买道具", "Buy item", [language, current_player] {
-            const std::string it = ask(language, "道具id: ", "Item id: ");
-            if (it.empty()) return std::string();
-            const std::string n = ask(language, "数量(空=1): ", "Amount (empty=1): ");
-            return append_arg(with_player("buy", current_player) + " " + it, n);
-        } });
+                               const std::string it = ask(language, "道具id: ", "Item id: ");
+                               if (it.empty()) return std::string();
+                               const std::string n =
+                                 ask(language, "数量(空=1): ", "Amount (empty=1): ");
+                               return append_arg(with_player("buy", current_player) + " " + it, n);
+                           } });
         groups.push_back(std::move(g));
     }
     {
         CatGroup g{ "任务", "Quest" };
         g.items.push_back({ next(), "可接任务", "Templates", [] { return "quests"; } });
         g.items.push_back({ next(), "接取任务", "Accept", [language, current_player] {
-            const std::string q = ask(language, "任务id: ", "Quest id: ");
-            return q.empty() ? "" : "quest accept " + current_player + " " + q;
-        } });
+                               const std::string q = ask(language, "任务id: ", "Quest id: ");
+                               return q.empty() ? "" : "quest accept " + current_player + " " + q;
+                           } });
         g.items.push_back({ next(), "我的任务", "My quests", [current_player] {
-            return with_player("quest list", current_player);
-        } });
+                               return with_player("quest list", current_player);
+                           } });
         g.items.push_back({ next(), "领取奖励", "Claim", [language, current_player] {
-            const std::string q = ask(language, "任务id: ", "Quest id: ");
-            return q.empty() ? "" : "quest claim " + current_player + " " + q;
-        } });
+                               const std::string q = ask(language, "任务id: ", "Quest id: ");
+                               return q.empty() ? "" : "quest claim " + current_player + " " + q;
+                           } });
         groups.push_back(std::move(g));
     }
     {
@@ -361,21 +368,20 @@ std::vector<CatGroup> make_categories(Language language, const std::string& curr
         g.items.push_back({ next(), "技能列表", "Skills", [] { return "skills"; } });
         g.items.push_back({ next(), "服务端状态", "ServerState", [] { return "state"; } });
         g.items.push_back({ next(), "战斗日志", "BattleLog", [language] {
-            const std::string b = ask(language, "战斗id(空=最近): ", "Battle id (empty=latest): ");
-            return append_arg("log", b);
-        } });
+                               const std::string b =
+                                 ask(language, "战斗id(空=最近): ", "Battle id (empty=latest): ");
+                               return append_arg("log", b);
+                           } });
         groups.push_back(std::move(g));
     }
     {
         CatGroup g{ "系统", "System" };
         g.items.push_back({ next(), "保存存档", "Save", [] { return "save"; } });
         g.items.push_back({ next(), "读取存档", "Load", [] { return "load"; } });
-        g.items.push_back({ next(), "手动命令", "Manual", [language] {
-            return ask(language, "命令: ", "Command: ");
-        } });
-        g.items.push_back({ next(), "登出", "Logout", [current_player] {
-            return with_player("logout", current_player);
-        } });
+        g.items.push_back({ next(), "手动命令", "Manual",
+                            [language] { return ask(language, "命令: ", "Command: "); } });
+        g.items.push_back({ next(), "登出", "Logout",
+                            [current_player] { return with_player("logout", current_player); } });
         g.items.push_back({ next(), "退出", "Quit", [] { return "quit"; } });
         groups.push_back(std::move(g));
     }
@@ -437,7 +443,8 @@ int main()
             continue;
         }
         if (command.empty()) {
-            std::cout << text(language, "[错误] 命令不能为空\n", "[error] command cannot be empty\n");
+            std::cout << text(language, "[错误] 命令不能为空\n",
+                              "[error] command cannot be empty\n");
             continue;
         }
 
@@ -455,12 +462,15 @@ int main()
 
         if (current_player.empty()) {
             const std::string login_name = first_arg_after_command(command, "login");
-            if (!login_name.empty() && output.find("[server] " + login_name + " entered the world") != std::string::npos) {
+            if (!login_name.empty()
+                && output.find("[server] " + login_name + " entered the world")
+                     != std::string::npos) {
                 current_player = login_name;
             }
         }
         else if (command == "logout " + current_player
-                 && output.find("[server] " + current_player + " logged out") != std::string::npos) {
+                 && output.find("[server] " + current_player + " logged out")
+                      != std::string::npos) {
             current_player.clear();
         }
     }

@@ -32,7 +32,8 @@ private:
 class ScopedOutputRedirect
 {
 public:
-    ScopedOutputRedirect(OutputSink& sink, std::ostream& stream) : sink_(sink), old_stream_(sink.stream())
+    ScopedOutputRedirect(OutputSink& sink, std::ostream& stream)
+      : sink_(sink), old_stream_(sink.stream())
     {
         sink_.set_stream(stream);
     }

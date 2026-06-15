@@ -120,7 +120,8 @@ Language load_or_choose_language()
                   << "> ";
         std::string input;
         std::getline(std::cin, input);
-        while (!input.empty() && (input.back() == ' ' || input.back() == '\t' || input.back() == '\r')) {
+        while (!input.empty()
+               && (input.back() == ' ' || input.back() == '\t' || input.back() == '\r')) {
             input.pop_back();
         }
         size_t start = 0;
@@ -170,7 +171,8 @@ void receive_loop(SOCKET socket, std::atomic<bool>& running)
 
 std::string trim_copy(std::string value)
 {
-    while (!value.empty() && (value.back() == ' ' || value.back() == '\t' || value.back() == '\r')) {
+    while (!value.empty()
+           && (value.back() == ' ' || value.back() == '\t' || value.back() == '\r')) {
         value.pop_back();
     }
     size_t start = 0;
@@ -237,7 +239,10 @@ void print_categories(Language lang, const std::vector<CatGroup>& groups, bool l
 {
     clear_screen();
     std::cout << "==== " << text(lang, "可用命令", "Available Commands") << " ====";
-    std::cout << "  " << text(lang, logged_in ? "已登录" : "未登录", logged_in ? "logged in" : "not logged in") << "\n\n";
+    std::cout << "  "
+              << text(lang, logged_in ? "已登录" : "未登录",
+                      logged_in ? "logged in" : "not logged in")
+              << "\n\n";
 
     constexpr int kCols = 3;
     constexpr int kColWidth = 26;
@@ -283,9 +288,10 @@ std::vector<CatGroup> make_categories(Language language, bool logged_in,
         {
             CatGroup g{ "账号", "Account" };
             g.items.push_back({ next(), "登录玩家", "Login player", false, [language] {
-                const std::string name = ask(language, "玩家名: ", "Player name: ");
-                return name.empty() ? "" : "login " + name;
-            } });
+                                   const std::string name =
+                                     ask(language, "玩家名: ", "Player name: ");
+                                   return name.empty() ? "" : "login " + name;
+                               } });
             g.items.push_back({ next(), "查看帮助", "Show help", false, [] { return "help"; } });
             groups.push_back(std::move(g));
         }
@@ -302,9 +308,9 @@ std::vector<CatGroup> make_categories(Language language, bool logged_in,
             CatGroup g{ "系统", "System" };
             g.items.push_back({ next(), "读取存档", "Load", false, [] { return "load"; } });
             g.items.push_back({ next(), "切换语言", "Switch lang", false, [toggle_lang_callback] {
-                if (toggle_lang_callback) toggle_lang_callback();
-                return std::string("__lang_toggle__");
-            } });
+                                   if (toggle_lang_callback) toggle_lang_callback();
+                                   return std::string("__lang_toggle__");
+                               } });
             g.items.push_back({ next(), "退出", "Quit", false, [] { return "quit"; } });
             groups.push_back(std::move(g));
         }
@@ -316,33 +322,39 @@ std::vector<CatGroup> make_categories(Language language, bool logged_in,
     {
         CatGroup g{ "战斗", "Battle" };
         g.items.push_back({ next(), "开始PVE", "Start PVE", true, [language] {
-            const std::string enc = ask_optional(language, "遭遇id(空=slime): ", "Encounter (empty=slime): ");
-            return append_arg("pve", enc);
-        } });
+                               const std::string enc = ask_optional(
+                                 language, "遭遇id(空=slime): ", "Encounter (empty=slime): ");
+                               return append_arg("pve", enc);
+                           } });
         g.items.push_back({ next(), "PVP排队", "PVP Queue", true, [] { return "queue"; } });
         g.items.push_back({ next(), "攻击", "Attack", true, [language] {
-            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg("attack", t);
-        } });
+                               const std::string t =
+                                 ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg("attack", t);
+                           } });
         g.items.push_back({ next(), "重击", "Heavy", true, [language] {
-            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg("heavy", t);
-        } });
+                               const std::string t =
+                                 ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg("heavy", t);
+                           } });
         g.items.push_back({ next(), "火符", "Fire", true, [language] {
-            const std::string t = ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
-            return append_arg("fire", t);
-        } });
+                               const std::string t =
+                                 ask_optional(language, "目标(空=auto): ", "Target (empty=auto): ");
+                               return append_arg("fire", t);
+                           } });
         g.items.push_back({ next(), "防御", "Defend", true, [] { return "defend"; } });
         g.items.push_back({ next(), "治疗", "Heal", true, [language] {
-            const std::string t = ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
-            return append_arg("heal", t);
-        } });
+                               const std::string t =
+                                 ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
+                               return append_arg("heal", t);
+                           } });
         g.items.push_back({ next(), "使用道具", "Use Item", true, [language] {
-            const std::string it = ask(language, "道具id: ", "Item id: ");
-            if (it.empty()) return std::string();
-            const std::string t = ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
-            return append_arg("use " + it, t);
-        } });
+                               const std::string it = ask(language, "道具id: ", "Item id: ");
+                               if (it.empty()) return std::string();
+                               const std::string t =
+                                 ask_optional(language, "目标(空=self): ", "Target (empty=self): ");
+                               return append_arg("use " + it, t);
+                           } });
         g.items.push_back({ next(), "认输", "Forfeit", true, [] { return "forfeit"; } });
         groups.push_back(std::move(g));
     }
@@ -351,25 +363,26 @@ std::vector<CatGroup> make_categories(Language language, bool logged_in,
         g.items.push_back({ next(), "查看背包", "Inventory", true, [] { return "inventory"; } });
         g.items.push_back({ next(), "查看商店", "Shop", true, [] { return "shop"; } });
         g.items.push_back({ next(), "购买道具", "Buy item", true, [language] {
-            const std::string it = ask(language, "道具id: ", "Item id: ");
-            if (it.empty()) return std::string();
-            const std::string n = ask_optional(language, "数量(空=1): ", "Amount (empty=1): ");
-            return append_arg("buy " + it, n);
-        } });
+                               const std::string it = ask(language, "道具id: ", "Item id: ");
+                               if (it.empty()) return std::string();
+                               const std::string n =
+                                 ask_optional(language, "数量(空=1): ", "Amount (empty=1): ");
+                               return append_arg("buy " + it, n);
+                           } });
         groups.push_back(std::move(g));
     }
     {
         CatGroup g{ "任务", "Quest" };
         g.items.push_back({ next(), "可接任务", "Templates", true, [] { return "quests"; } });
         g.items.push_back({ next(), "接取任务", "Accept", true, [language] {
-            const std::string q = ask(language, "任务id: ", "Quest id: ");
-            return q.empty() ? "" : "quest accept " + q;
-        } });
+                               const std::string q = ask(language, "任务id: ", "Quest id: ");
+                               return q.empty() ? "" : "quest accept " + q;
+                           } });
         g.items.push_back({ next(), "我的任务", "My quests", true, [] { return "quest list"; } });
         g.items.push_back({ next(), "领取奖励", "Claim", true, [language] {
-            const std::string q = ask(language, "任务id: ", "Quest id: ");
-            return q.empty() ? "" : "quest claim " + q;
-        } });
+                               const std::string q = ask(language, "任务id: ", "Quest id: ");
+                               return q.empty() ? "" : "quest claim " + q;
+                           } });
         groups.push_back(std::move(g));
     }
     {
@@ -380,9 +393,10 @@ std::vector<CatGroup> make_categories(Language language, bool logged_in,
         g.items.push_back({ next(), "技能列表", "Skills", true, [] { return "skills"; } });
         g.items.push_back({ next(), "服务端状态", "ServerState", true, [] { return "state"; } });
         g.items.push_back({ next(), "战斗日志", "BattleLog", true, [language] {
-            const std::string b = ask_optional(language, "战斗id(空=最近): ", "Battle id (empty=latest): ");
-            return append_arg("log", b);
-        } });
+                               const std::string b = ask_optional(
+                                 language, "战斗id(空=最近): ", "Battle id (empty=latest): ");
+                               return append_arg("log", b);
+                           } });
         groups.push_back(std::move(g));
     }
     {
@@ -431,15 +445,17 @@ int main()
         addr.sin_port = htons(kPort);
         inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
-        if (connect(socket_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+        if (connect(socket_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))
+            == SOCKET_ERROR) {
             std::cerr << text(language, "连接失败，请先启动 mmdemo_server。\n",
                               "connect failed. Start mmdemo_server first.\n");
             closesocket(socket_handle);
             return 1;
         }
 
-        std::cout << text(language, "已连接到 127.0.0.1:7878。服务端响应仍以原始战报文本显示。\n",
-                          "Connected to 127.0.0.1:7878. Server responses are shown as raw battle text.\n");
+        std::cout << text(
+          language, "已连接到 127.0.0.1:7878。服务端响应仍以原始战报文本显示。\n",
+          "Connected to 127.0.0.1:7878. Server responses are shown as raw battle text.\n");
 
         std::atomic<bool> running{ true };
         std::thread receiver(receive_loop, socket_handle, std::ref(running));

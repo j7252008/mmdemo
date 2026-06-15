@@ -29,7 +29,8 @@ public:
     void run();
 
 private:
-    // Central command router. Command handlers stay private so protocol validation remains in one place.
+    // Central command router. Command handlers stay private so protocol validation remains in one
+    // place.
     void handle_line(const std::string& line, bool allow_process_exit);
 
     static std::string arg(const std::vector<std::string>& words, size_t index);
@@ -39,12 +40,15 @@ private:
     void forfeit(const std::string& name);
     void start_pve(const std::string& name, const std::string& encounter_id);
     void queue(const std::string& name);
-    void submit_action(const std::string& name, const std::string& skill, const std::string& target);
-    void submit_item_action(const std::string& name, const std::string& item_id, const std::string& target);
+    void submit_action(const std::string& name, const std::string& skill,
+                       const std::string& target);
+    void submit_item_action(const std::string& name, const std::string& item_id,
+                            const std::string& target);
     void create_battle(const std::string& mode, std::vector<Fighter> fighters);
     void finish_battle(Battle& battle);
     void grant_rewards(const Battle& battle);
-    bool grant_player_reward(Player& player, int exp, int gold, const std::map<std::string, int>& items);
+    bool grant_player_reward(Player& player, int exp, int gold,
+                             const std::map<std::string, int>& items);
     void update_quest_progress(Player& player, const std::map<std::string, int>& kills);
 
     static int exp_to_next(int level);
@@ -56,15 +60,18 @@ private:
     std::string pop_waiting_opponent(const std::string& self);
 
     void print_players() const;
-    void give_item(const std::string& name, const std::string& item_id, const std::string& amount_text);
+    void give_item(const std::string& name, const std::string& item_id,
+                   const std::string& amount_text);
     void print_inventory(const std::string& name) const;
     std::string inventory_summary(const Player& player) const;
     void print_monsters() const;
     void print_items() const;
     void print_shop() const;
-    void buy_item(const std::string& name, const std::string& item_id, const std::string& amount_text);
+    void buy_item(const std::string& name, const std::string& item_id,
+                  const std::string& amount_text);
     void print_quest_defs() const;
-    void handle_quest_command(const std::string& subcmd, const std::string& name, const std::string& quest_id);
+    void handle_quest_command(const std::string& subcmd, const std::string& name,
+                              const std::string& quest_id);
     void accept_quest(const std::string& name, const std::string& quest_id);
     void print_player_quests(const std::string& name) const;
     void claim_quest(const std::string& name, const std::string& quest_id);

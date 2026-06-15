@@ -22,7 +22,8 @@ bool contains(const std::string& haystack, const std::string& needle)
     return haystack.find(needle) != std::string::npos;
 }
 
-void expect_contains(TestContext& ctx, const std::string& label, const std::string& text, const std::string& needle)
+void expect_contains(TestContext& ctx, const std::string& label, const std::string& text,
+                     const std::string& needle)
 {
     if (contains(text, needle)) {
         std::cout << "[PASS] " << label << "\n";
@@ -36,7 +37,8 @@ void expect_contains(TestContext& ctx, const std::string& label, const std::stri
               << text << "\n";
 }
 
-void expect_not_contains(TestContext& ctx, const std::string& label, const std::string& text, const std::string& needle)
+void expect_not_contains(TestContext& ctx, const std::string& label, const std::string& text,
+                         const std::string& needle)
 {
     if (!contains(text, needle)) {
         std::cout << "[PASS] " << label << "\n";
@@ -85,7 +87,8 @@ void test_command_catalog_and_introspection(TestContext& ctx)
     expect_contains(ctx, "unknown command", output, "[error] unknown command");
 }
 
-void expect_equal(TestContext& ctx, const std::string& label, const std::string& actual, const std::string& expected)
+void expect_equal(TestContext& ctx, const std::string& label, const std::string& actual,
+                  const std::string& expected)
 {
     if (actual == expected) {
         std::cout << "[PASS] " << label << "\n";
@@ -103,30 +106,35 @@ void test_tcp_session_command_translation(TestContext& ctx)
     // TCP shorthand must be deterministic and must reject attempts to act as another player.
     std::string error;
 
-    expect_equal(ctx, "tcp pve shorthand", mm::translate_session_command("pve forest", "alice", error),
-                 "pve alice forest");
-    expect_equal(ctx, "tcp queue shorthand", mm::translate_session_command("queue", "alice", error), "queue alice");
-    expect_equal(ctx, "tcp attack target shorthand", mm::translate_session_command("heavy bob", "alice", error),
-                 "heavy alice bob");
-    expect_equal(ctx, "tcp use item shorthand", mm::translate_session_command("use potion", "alice", error),
-                 "use alice potion");
-    expect_equal(ctx, "tcp buy shorthand", mm::translate_session_command("buy potion 2", "alice", error),
+    expect_equal(ctx, "tcp pve shorthand",
+                 mm::translate_session_command("pve forest", "alice", error), "pve alice forest");
+    expect_equal(ctx, "tcp queue shorthand", mm::translate_session_command("queue", "alice", error),
+                 "queue alice");
+    expect_equal(ctx, "tcp attack target shorthand",
+                 mm::translate_session_command("heavy bob", "alice", error), "heavy alice bob");
+    expect_equal(ctx, "tcp use item shorthand",
+                 mm::translate_session_command("use potion", "alice", error), "use alice potion");
+    expect_equal(ctx, "tcp buy shorthand",
+                 mm::translate_session_command("buy potion 2", "alice", error),
                  "buy alice potion 2");
     expect_equal(ctx, "tcp quest accept shorthand",
                  mm::translate_session_command("quest accept slime_hunter", "alice", error),
                  "quest accept alice slime_hunter");
-    expect_equal(ctx, "tcp quest list shorthand", mm::translate_session_command("quest list", "alice", error),
-                 "quest list alice");
-    expect_equal(ctx, "tcp explicit own command", mm::translate_session_command("pve alice slime", "alice", error),
+    expect_equal(ctx, "tcp quest list shorthand",
+                 mm::translate_session_command("quest list", "alice", error), "quest list alice");
+    expect_equal(ctx, "tcp explicit own command",
+                 mm::translate_session_command("pve alice slime", "alice", error),
                  "pve alice slime");
 
     error.clear();
-    expect_equal(ctx, "tcp reject other player", mm::translate_session_command("forfeit bob", "alice", error), "");
+    expect_equal(ctx, "tcp reject other player",
+                 mm::translate_session_command("forfeit bob", "alice", error), "");
     expect_contains(ctx, "tcp reject error text", error, "bound to alice");
 
-    expect_equal(ctx, "tcp prelogin help allowed", mm::is_valid_tcp_command_without_login("help") ? "yes" : "no",
-                 "yes");
-    expect_equal(ctx, "tcp prelogin pve rejected", mm::is_valid_tcp_command_without_login("pve") ? "yes" : "no", "no");
+    expect_equal(ctx, "tcp prelogin help allowed",
+                 mm::is_valid_tcp_command_without_login("help") ? "yes" : "no", "yes");
+    expect_equal(ctx, "tcp prelogin pve rejected",
+                 mm::is_valid_tcp_command_without_login("pve") ? "yes" : "no", "no");
 }
 
 void test_pve_drop(TestContext& ctx)
@@ -186,7 +194,8 @@ void test_active_battle_skills_state_and_log(TestContext& ctx)
 
     expect_contains(ctx, "state active battle", output, "[server] active battles: B1");
     expect_contains(ctx, "defend skill event", output, "alice braces for impact.");
-    expect_contains(ctx, "log command reads active battle", output, "[log][0][start] Battle B1 starts");
+    expect_contains(ctx, "log command reads active battle", output,
+                    "[log][0][start] Battle B1 starts");
     expect_contains(ctx, "cannot start pve while battling", output, "alice is already in battle");
 }
 
@@ -234,8 +243,10 @@ void test_multi_monster_encounter(TestContext& ctx)
                                            });
 
     expect_contains(ctx, "encounter enter", output, "alice enters Forest Patrol");
-    expect_contains(ctx, "encounter battle starts", output, "Battle B1 starts: alice vs Green Slime#1, Mountain Fox#2");
-    expect_contains(ctx, "encounter reward sum", output, "[reward] alice receives 30 exp and 20 gold");
+    expect_contains(ctx, "encounter battle starts", output,
+                    "Battle B1 starts: alice vs Green Slime#1, Mountain Fox#2");
+    expect_contains(ctx, "encounter reward sum", output,
+                    "[reward] alice receives 30 exp and 20 gold");
     expect_contains(ctx, "encounter quest progress", output, "Fox Trouble progress 1/1");
     expect_contains(ctx, "encounter quest claimed", output, "claimed Fox Trouble reward");
 }
@@ -289,7 +300,8 @@ void test_save_and_load(TestContext& ctx)
                                                  "save",
                                                });
 
-        expect_contains(ctx, "save writes custom file", output, "saved 1 players to test_players_save_load.json");
+        expect_contains(ctx, "save writes custom file", output,
+                        "saved 1 players to test_players_save_load.json");
     }
 
     {
@@ -299,11 +311,13 @@ void test_save_and_load(TestContext& ctx)
                                                  "players",
                                                });
 
-        expect_contains(ctx, "load reads custom file", output, "loaded 1 players from test_players_save_load.json");
+        expect_contains(ctx, "load reads custom file", output,
+                        "loaded 1 players from test_players_save_load.json");
         expect_contains(ctx, "load restores player", output, "alice level=1");
         expect_contains(ctx, "load restores inventory", output, "inventory=potionx4");
         expect_contains(ctx, "load restores quest", output, "quests=slime_hunter:1/2");
-        expect_contains(ctx, "load keeps player offline", output, "alice level=1 exp=12/40 gold=8 offline");
+        expect_contains(ctx, "load keeps player offline", output,
+                        "alice level=1 exp=12/40 gold=8 offline");
     }
 
     std::remove(file_name);
@@ -370,7 +384,8 @@ void test_json_config_loading(TestContext& ctx)
 
     expect_contains(ctx, "json item catalog", output, "[item] berry name=Battle Berry");
     expect_contains(ctx, "json encounter enters", output, "alice enters JSON Trial");
-    expect_contains(ctx, "json monster battle", output, "Battle B1 starts: alice vs Training Dummy#1");
+    expect_contains(ctx, "json monster battle", output,
+                    "Battle B1 starts: alice vs Training Dummy#1");
     expect_contains(ctx, "json reward", output, "alice receives 5 exp and 2 gold");
     expect_contains(ctx, "json drop", output, "alice receives item berry x1");
     expect_contains(ctx, "json quest progress", output, "Dummy Trial progress 1/1");

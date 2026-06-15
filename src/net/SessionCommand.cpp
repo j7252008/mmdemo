@@ -16,16 +16,18 @@ std::string arg(const std::vector<std::string>& words, size_t index)
 
 bool is_player_bound_command(const std::string& command)
 {
-    return command == "pve" || command == "queue" || command == "attack" || command == "heavy" || command == "skill"
-           || command == "fire" || command == "defend" || command == "heal" || command == "forfeit" || command == "use"
-           || command == "inventory" || command == "bag" || command == "buy" || command == "give";
+    return command == "pve" || command == "queue" || command == "attack" || command == "heavy"
+           || command == "skill" || command == "fire" || command == "defend" || command == "heal"
+           || command == "forfeit" || command == "use" || command == "inventory" || command == "bag"
+           || command == "buy" || command == "give";
 }
 
 bool is_name_command_with_first_player_arg(const std::string& command)
 {
-    return command == "pve" || command == "queue" || command == "attack" || command == "heavy" || command == "skill"
-           || command == "fire" || command == "defend" || command == "heal" || command == "forfeit" || command == "use"
-           || command == "inventory" || command == "bag" || command == "buy" || command == "give";
+    return command == "pve" || command == "queue" || command == "attack" || command == "heavy"
+           || command == "skill" || command == "fire" || command == "defend" || command == "heal"
+           || command == "forfeit" || command == "use" || command == "inventory" || command == "bag"
+           || command == "buy" || command == "give";
 }
 
 }  // namespace
@@ -33,10 +35,12 @@ bool is_name_command_with_first_player_arg(const std::string& command)
 bool is_valid_tcp_command_without_login(const std::string& command)
 {
     return command == "help" || command == "monsters" || command == "items" || command == "skills"
-           || command == "quests" || command == "shop" || command == "state" || command == "log" || command == "load";
+           || command == "quests" || command == "shop" || command == "state" || command == "log"
+           || command == "load";
 }
 
-std::string translate_session_command(const std::string& line, const std::string& bound_player, std::string& error)
+std::string translate_session_command(const std::string& line, const std::string& bound_player,
+                                      std::string& error)
 {
     const auto words = split_words(line);
     if (words.empty()) {
@@ -76,10 +80,11 @@ std::string translate_session_command(const std::string& line, const std::string
     if (words.size() >= 2 && words[1] == bound_player) {
         return line;
     }
-    if (is_name_command_with_first_player_arg(command) && words.size() >= 2 && words[1] != bound_player) {
+    if (is_name_command_with_first_player_arg(command) && words.size() >= 2
+        && words[1] != bound_player) {
         if ((command == "pve" && words.size() == 2)
-            || ((command == "attack" || command == "heavy" || command == "skill" || command == "fire"
-                 || command == "heal")
+            || ((command == "attack" || command == "heavy" || command == "skill"
+                 || command == "fire" || command == "heal")
                 && words.size() == 2)
             || (command == "use" && words.size() == 2)
             || ((command == "buy" || command == "give") && words.size() >= 2)) {

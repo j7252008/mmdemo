@@ -11,14 +11,17 @@
 
 namespace mm {
 
-GameServer::GameServer() : config_(Config::load_json_or_default("data/config.json")), rng_(std::random_device{}()) {}
+GameServer::GameServer()
+  : config_(Config::load_json_or_default("data/config.json")), rng_(std::random_device{}())
+{}
 
 GameServer::GameServer(std::string player_file, unsigned int seed)
   : config_(Config::make_default()), rng_(seed), player_file_(std::move(player_file))
 {}
 
 GameServer::GameServer(std::string player_file, unsigned int seed, std::string config_file)
-  : config_(config_file.empty() ? Config::make_default() : Config::load_json_or_default(config_file))
+  : config_(config_file.empty() ? Config::make_default()
+                                : Config::load_json_or_default(config_file))
   , rng_(seed)
   , player_file_(std::move(player_file))
 {}
@@ -75,7 +78,8 @@ void GameServer::handle_line(const std::string& line, bool allow_process_exit)
     else if (cmd == "queue") {
         queue(arg(words, 1));
     }
-    else if (cmd == "attack" || cmd == "heavy" || cmd == "skill" || cmd == "fire" || cmd == "defend" || cmd == "heal") {
+    else if (cmd == "attack" || cmd == "heavy" || cmd == "skill" || cmd == "fire" || cmd == "defend"
+             || cmd == "heal") {
         const std::string skill = cmd == "skill" ? "heavy" : cmd;
         submit_action(arg(words, 1), skill, arg(words, 2));
     }
@@ -221,7 +225,8 @@ void GameServer::start_pve(const std::string& name, const std::string& encounter
     for (const auto& monster_id : encounter_it->second.monsters) {
         const auto monster_it = config_.monsters.find(monster_id);
         if (monster_it == config_.monsters.end()) {
-            out_ << "[error] encounter " << encounter_id << " references unknown monster: " << monster_id << "\n";
+            out_ << "[error] encounter " << encounter_id
+                 << " references unknown monster: " << monster_id << "\n";
             return;
         }
         fighters.push_back(make_monster_fighter(monster_it->second, monster_index++, "right"));
@@ -263,7 +268,8 @@ void GameServer::queue(const std::string& name)
     create_battle("pvp", fighters);
 }
 
-void GameServer::submit_action(const std::string& name, const std::string& skill, const std::string& target)
+void GameServer::submit_action(const std::string& name, const std::string& skill,
+                               const std::string& target)
 {
     Player* player = require_player(name);
     if (player == nullptr) {
@@ -290,7 +296,8 @@ void GameServer::submit_action(const std::string& name, const std::string& skill
     }
 }
 
-void GameServer::submit_item_action(const std::string& name, const std::string& item_id, const std::string& target)
+void GameServer::submit_item_action(const std::string& name, const std::string& item_id,
+                                    const std::string& target)
 {
     Player* player = require_player(name);
     if (player == nullptr) {
@@ -380,11 +387,12 @@ void GameServer::grant_rewards(const Battle& battle)
     }
 
     const auto& fighters = battle.fighters();
-    const bool player_side_alive = std::any_of(
-      fighters.begin(), fighters.end(), [](const Fighter& f) { return f.is_player && f.side == "left" && f.alive(); });
-    const bool monster_side_alive = std::any_of(fighters.begin(), fighters.end(), [](const Fighter& f) {
-        return !f.is_player && f.side == "right" && f.alive();
-    });
+    const bool player_side_alive =
+      std::any_of(fighters.begin(), fighters.end(),
+                  [](const Fighter& f) { return f.is_player && f.side == "left" && f.alive(); });
+    const bool monster_side_alive =
+      std::any_of(fighters.begin(), fighters.end(),
+                  [](const Fighter& f) { return !f.is_player && f.side == "right" && f.alive(); });
     if (!player_side_alive || monster_side_alive) {
         return;
     }
@@ -419,13 +427,15 @@ void GameServer::grant_rewards(const Battle& battle)
         }
         out_ << "\n";
         for (const auto& drop : drops) {
-            out_ << "[reward] " << player.name << " receives item " << drop.first << " x" << drop.second << "\n";
+            out_ << "[reward] " << player.name << " receives item " << drop.first << " x"
+                 << drop.second << "\n";
         }
         update_quest_progress(player, kills);
     }
 }
 
-bool GameServer::grant_player_reward(Player& player, int exp, int gold, const std::map<std::string, int>& items)
+bool GameServer::grant_player_reward(Player& player, int exp, int gold,
+                                     const std::map<std::string, int>& items)
 {
     player.exp += exp;
     player.gold += gold;
@@ -535,7 +545,8 @@ Battle* GameServer::active_battle(const std::string& id)
 
 void GameServer::remove_from_queue(const std::string& name)
 {
-    waiting_queue_.erase(std::remove(waiting_queue_.begin(), waiting_queue_.end(), name), waiting_queue_.end());
+    waiting_queue_.erase(std::remove(waiting_queue_.begin(), waiting_queue_.end(), name),
+                         waiting_queue_.end());
     players_.at(name).queued = false;
 }
 
@@ -563,8 +574,9 @@ void GameServer::print_players() const
     }
     for (const auto& pair : players_) {
         const Player& player = pair.second;
-        out_ << "[player] " << player.name << " level=" << player.level << " exp=" << player.exp << "/"
-             << exp_to_next(player.level) << " gold=" << player.gold << (player.online ? " online" : " offline");
+        out_ << "[player] " << player.name << " level=" << player.level << " exp=" << player.exp
+             << "/" << exp_to_next(player.level) << " gold=" << player.gold
+             << (player.online ? " online" : " offline");
         if (!player.battle_id.empty()) {
             out_ << " battle=" << player.battle_id;
         }
@@ -581,7 +593,8 @@ void GameServer::print_players() const
     }
 }
 
-void GameServer::give_item(const std::string& name, const std::string& item_id, const std::string& amount_text)
+void GameServer::give_item(const std::string& name, const std::string& item_id,
+                           const std::string& amount_text)
 {
     Player* player = require_player(name);
     if (player == nullptr) {
@@ -634,7 +647,8 @@ void GameServer::print_monsters() const
     for (const auto& pair : config_.monsters) {
         const MonsterDef& monster = pair.second;
         out_ << "[monster] " << monster.id << " name=" << monster.name << " level=" << monster.level
-             << " hp=" << monster.max_hp << " reward=" << monster.exp << "exp/" << monster.gold << "gold"
+             << " hp=" << monster.max_hp << " reward=" << monster.exp << "exp/" << monster.gold
+             << "gold"
              << " drops=" << drop_summary(monster) << "\n";
     }
     for (const auto& pair : config_.encounters) {
@@ -648,8 +662,8 @@ void GameServer::print_items() const
 {
     for (const auto& pair : config_.items) {
         const ItemDef& item = pair.second;
-        out_ << "[item] " << item.id << " name=" << item.name << " heal=" << item.heal << " price=" << item.price
-             << " desc=\"" << item.description << "\"\n";
+        out_ << "[item] " << item.id << " name=" << item.name << " heal=" << item.heal
+             << " price=" << item.price << " desc=\"" << item.description << "\"\n";
     }
 }
 
@@ -657,12 +671,13 @@ void GameServer::print_shop() const
 {
     for (const auto& pair : config_.items) {
         const ItemDef& item = pair.second;
-        out_ << "[shop] " << item.id << " name=" << item.name << " price=" << item.price << " heal=" << item.heal
-             << "\n";
+        out_ << "[shop] " << item.id << " name=" << item.name << " price=" << item.price
+             << " heal=" << item.heal << "\n";
     }
 }
 
-void GameServer::buy_item(const std::string& name, const std::string& item_id, const std::string& amount_text)
+void GameServer::buy_item(const std::string& name, const std::string& item_id,
+                          const std::string& amount_text)
 {
     Player* player = require_player(name);
     if (player == nullptr) {
@@ -681,13 +696,15 @@ void GameServer::buy_item(const std::string& name, const std::string& item_id, c
 
     const int cost = item_it->second.price * amount;
     if (player->gold < cost) {
-        out_ << "[error] " << name << " lacks gold. need=" << cost << " have=" << player->gold << "\n";
+        out_ << "[error] " << name << " lacks gold. need=" << cost << " have=" << player->gold
+             << "\n";
         return;
     }
 
     player->gold -= cost;
     player->inventory[item_id] += amount;
-    out_ << "[shop] " << name << " bought " << item_id << " x" << amount << " for " << cost << " gold\n";
+    out_ << "[shop] " << name << " bought " << item_id << " x" << amount << " for " << cost
+         << " gold\n";
 }
 
 void GameServer::print_quest_defs() const
@@ -701,7 +718,8 @@ void GameServer::print_quest_defs() const
     }
 }
 
-void GameServer::handle_quest_command(const std::string& subcmd, const std::string& name, const std::string& quest_id)
+void GameServer::handle_quest_command(const std::string& subcmd, const std::string& name,
+                                      const std::string& quest_id)
 {
     if (subcmd == "accept") {
         accept_quest(name, quest_id);
@@ -786,14 +804,16 @@ void GameServer::claim_quest(const std::string& name, const std::string& quest_i
         return;
     }
     if (state.progress < quest.required_kills) {
-        out_ << "[quest] " << name << " progress " << state.progress << "/" << quest.required_kills << "\n";
+        out_ << "[quest] " << name << " progress " << state.progress << "/" << quest.required_kills
+             << "\n";
         return;
     }
 
-    const bool leveled = grant_player_reward(*player, quest.reward_exp, quest.reward_gold, quest.reward_items);
+    const bool leveled =
+      grant_player_reward(*player, quest.reward_exp, quest.reward_gold, quest.reward_items);
     state.claimed = true;
-    out_ << "[quest] " << name << " claimed " << quest.name << " reward " << quest.reward_exp << " exp "
-         << quest.reward_gold << " gold";
+    out_ << "[quest] " << name << " claimed " << quest.name << " reward " << quest.reward_exp
+         << " exp " << quest.reward_gold << " gold";
     if (!quest.reward_items.empty()) {
         out_ << " items=" << item_map_summary(quest.reward_items);
     }

@@ -5,9 +5,14 @@
 
 namespace mm {
 
-Battle::Battle(std::string id, std::string mode, std::vector<Fighter> fighters, const Config& config, std::mt19937& rng,
-               OutputSink& out)
-  : id_(std::move(id)), mode_(std::move(mode)), fighters_(std::move(fighters)), config_(config), rng_(rng), out_(out)
+Battle::Battle(std::string id, std::string mode, std::vector<Fighter> fighters,
+               const Config& config, std::mt19937& rng, OutputSink& out)
+  : id_(std::move(id))
+  , mode_(std::move(mode))
+  , fighters_(std::move(fighters))
+  , config_(config)
+  , rng_(rng)
+  , out_(out)
 {}
 
 const std::string& Battle::id() const
@@ -32,12 +37,13 @@ bool Battle::closed() const
 
 void Battle::start()
 {
-    add_event("start", "Battle " + id_ + " starts: " + side_names("left") + " vs " + side_names("right"));
+    add_event("start",
+              "Battle " + id_ + " starts: " + side_names("left") + " vs " + side_names("right"));
     begin_round();
 }
 
-bool Battle::submit_action(const std::string& player_name, const std::string& skill_id, const std::string& target_id,
-                           std::string& error)
+bool Battle::submit_action(const std::string& player_name, const std::string& skill_id,
+                           const std::string& target_id, std::string& error)
 {
     if (closed_) {
         error = "battle is closed";
@@ -67,8 +73,8 @@ bool Battle::submit_action(const std::string& player_name, const std::string& sk
     }
 
     pending_actions_[actor->id] = Action{ actor->id, skill_id, target->id };
-    out_ << "[server] action locked: " << player_name << " -> " << skill_it->second.name << " / " << target->name
-         << "\n";
+    out_ << "[server] action locked: " << player_name << " -> " << skill_it->second.name << " / "
+         << target->name << "\n";
 
     if (all_ready()) {
         resolve_ready_round();
@@ -103,8 +109,8 @@ bool Battle::submit_item_action(const std::string& player_name, const std::strin
     }
 
     pending_actions_[actor->id] = Action{ actor->id, "", target->id, item_id, true };
-    out_ << "[server] action locked: " << player_name << " -> use " << item_it->second.name << " / " << target->name
-         << "\n";
+    out_ << "[server] action locked: " << player_name << " -> use " << item_it->second.name << " / "
+         << target->name << "\n";
 
     if (all_ready()) {
         resolve_ready_round();
@@ -140,8 +146,8 @@ void Battle::print_state() const
 {
     out_ << "[state]";
     for (const auto& fighter : fighters_) {
-        out_ << " " << fighter.id << "=" << fighter.name << " HP " << fighter.hp << "/" << fighter.max_hp << " MP "
-             << fighter.mp << "/" << fighter.max_mp;
+        out_ << " " << fighter.id << "=" << fighter.name << " HP " << fighter.hp << "/"
+             << fighter.max_hp << " MP " << fighter.mp << "/" << fighter.max_mp;
     }
     out_ << "\n";
 }
@@ -203,8 +209,8 @@ void Battle::submit_ai_actions()
 std::string Battle::choose_ai_skill(const Fighter& fighter)
 {
     const auto heal_it = config_.skills.find("heal");
-    if (heal_it != config_.skills.end() && contains(fighter.skills, "heal") && fighter.hp * 100 <= fighter.max_hp * 35
-        && fighter.mp >= heal_it->second.mp_cost) {
+    if (heal_it != config_.skills.end() && contains(fighter.skills, "heal")
+        && fighter.hp * 100 <= fighter.max_hp * 35 && fighter.mp >= heal_it->second.mp_cost) {
         return "heal";
     }
 
@@ -322,8 +328,8 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
         const int amount = dist(rng_) + actor.level * 2;
         const int before = resolved_target->hp;
         resolved_target->hp = clamp_int(resolved_target->hp + amount, 0, resolved_target->max_hp);
-        add_event("heal", actor.name + " uses " + skill->name + " on " + resolved_target->name + ": +"
-                            + std::to_string(resolved_target->hp - before) + " HP.");
+        add_event("heal", actor.name + " uses " + skill->name + " on " + resolved_target->name
+                            + ": +" + std::to_string(resolved_target->hp - before) + " HP.");
         return;
     }
 
@@ -346,14 +352,16 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
 bool Battle::all_ready() const
 {
     for (const auto& fighter : fighters_) {
-        if (fighter.is_player && fighter.alive() && pending_actions_.find(fighter.id) == pending_actions_.end()) {
+        if (fighter.is_player && fighter.alive()
+            && pending_actions_.find(fighter.id) == pending_actions_.end()) {
             return false;
         }
     }
     return true;
 }
 
-Fighter* Battle::resolve_target(const Fighter& actor, const SkillDef& skill, const std::string& requested_id)
+Fighter* Battle::resolve_target(const Fighter& actor, const SkillDef& skill,
+                                const std::string& requested_id)
 {
     if (skill.target == TargetRule::Self) {
         return fighter_by_id(actor.id);

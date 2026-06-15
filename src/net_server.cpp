@@ -106,7 +106,8 @@ void logout_bound_player(mm::GameServer& game, ClientHub& hub, std::string& boun
         return;
     }
     std::string response = game.execute("logout " + bound_player);
-    if (response.find("[error] " + bound_player + " is in battle, cannot logout") != std::string::npos) {
+    if (response.find("[error] " + bound_player + " is in battle, cannot logout")
+        != std::string::npos) {
         response += game.execute("forfeit " + bound_player);
         response += game.execute("logout " + bound_player);
     }
@@ -121,7 +122,8 @@ void handle_client(SOCKET client, mm::GameServer& game, ClientHub& hub)
 {
     hub.add(client);
     send_text(client, "mmdemo TCP text client connected.\n"
-                      "Type login <name> first. After login, use shorthand: pve slime, queue, heavy bob, use potion.\n"
+                      "Type login <name> first. After login, use shorthand: pve slime, queue, "
+                      "heavy bob, use potion.\n"
                       "Type quit to close this client session.\n");
 
     std::string pending;
@@ -156,7 +158,8 @@ void handle_client(SOCKET client, mm::GameServer& game, ClientHub& hub)
             std::string translated = line;
             if (command == "login") {
                 if (!bound_player.empty()) {
-                    send_text(client, "[error] this session is already logged in as " + bound_player + "\n");
+                    send_text(client, "[error] this session is already logged in as " + bound_player
+                                        + "\n");
                     continue;
                 }
                 if (words.size() < 2) {
@@ -177,11 +180,14 @@ void handle_client(SOCKET client, mm::GameServer& game, ClientHub& hub)
                 }
             }
 
-            // GameServer returns the authoritative text result; the socket layer only broadcasts it.
+            // GameServer returns the authoritative text result; the socket layer only broadcasts
+            // it.
             std::string response = game.execute(translated);
             if (command == "login"
-                && (response.find("[server] " + words[1] + " entered the world") != std::string::npos
-                    || response.find("[server] " + words[1] + " reconnected") != std::string::npos)) {
+                && (response.find("[server] " + words[1] + " entered the world")
+                      != std::string::npos
+                    || response.find("[server] " + words[1] + " reconnected")
+                         != std::string::npos)) {
                 bound_player = words[1];
                 response += "[session] bound to " + bound_player + "\n";
             }

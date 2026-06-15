@@ -16,8 +16,8 @@ namespace mm {
 class Battle
 {
 public:
-    Battle(std::string id, std::string mode, std::vector<Fighter> fighters, const Config& config, std::mt19937& rng,
-           OutputSink& out);
+    Battle(std::string id, std::string mode, std::vector<Fighter> fighters, const Config& config,
+           std::mt19937& rng, OutputSink& out);
 
     const std::string& id() const;
     const std::vector<Event>& events() const;
@@ -28,14 +28,15 @@ public:
 
     // Player skill input is locked for the current round. When all living players have acted,
     // the room resolves every pending action in speed order.
-    bool submit_action(const std::string& player_name, const std::string& skill_id, const std::string& target_id,
-                       std::string& error);
+    bool submit_action(const std::string& player_name, const std::string& skill_id,
+                       const std::string& target_id, std::string& error);
 
     // Battle item usage follows the same pending-action path as skills so turn order stays uniform.
-    bool submit_item_action(const std::string& player_name, const std::string& item_id, const std::string& target_id,
-                            std::string& error);
+    bool submit_item_action(const std::string& player_name, const std::string& item_id,
+                            const std::string& target_id, std::string& error);
 
-    // Forfeit is an immediate terminal action. GameServer will clean player battle bindings afterward.
+    // Forfeit is an immediate terminal action. GameServer will clean player battle bindings
+    // afterward.
     bool forfeit_player(const std::string& player_name, std::string& error);
 
     void print_state() const;
@@ -48,7 +49,8 @@ private:
     // waiting for player actions. Pure PVE can resolve immediately after the player acts.
     void begin_round();
 
-    // Monster AI is intentionally simple: heal at low HP if possible, otherwise choose an affordable attack.
+    // Monster AI is intentionally simple: heal at low HP if possible, otherwise choose an
+    // affordable attack.
     void submit_ai_actions();
     std::string choose_ai_skill(const Fighter& fighter);
 
@@ -63,7 +65,8 @@ private:
     bool all_ready() const;
 
     // Target fallback keeps text commands terse: empty target means lowest-HP valid target.
-    Fighter* resolve_target(const Fighter& actor, const SkillDef& skill, const std::string& requested_id);
+    Fighter* resolve_target(const Fighter& actor, const SkillDef& skill,
+                            const std::string& requested_id);
 
     Fighter* fighter_for_player(const std::string& player_name);
     Fighter* fighter_by_id(const std::string& id);

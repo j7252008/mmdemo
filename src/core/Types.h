@@ -51,7 +51,8 @@ struct MonsterDef
     std::vector<std::string> skills;
 };
 
-// Item templates are intentionally small for the text prototype: only battle healing and shop price.
+// Item templates are intentionally small for the text prototype: only battle healing and shop
+// price.
 struct ItemDef
 {
     std::string id;
@@ -159,22 +160,46 @@ struct Config
     static Config make_default()
     {
         Config cfg;
-        cfg.skills.emplace("attack", SkillDef{ "attack", "Attack", SkillKind::Damage, TargetRule::Enemy, 0, 0, 0, 0 });
-        cfg.skills.emplace("heavy",
-                           SkillDef{ "heavy", "Heavy Strike", SkillKind::Damage, TargetRule::Enemy, 8, 14, 0, 0 });
-        cfg.skills.emplace("fire",
-                           SkillDef{ "fire", "Fire Charm", SkillKind::Damage, TargetRule::Enemy, 10, 20, 0, 0 });
-        cfg.skills.emplace("defend", SkillDef{ "defend", "Defend", SkillKind::Defend, TargetRule::Self, 0, 0, 0, 0 });
-        cfg.skills.emplace("heal", SkillDef{ "heal", "Heal", SkillKind::Heal, TargetRule::Ally, 6, 0, 18, 28 });
+        cfg.skills.emplace("attack", SkillDef{ "attack", "Attack", SkillKind::Damage,
+                                               TargetRule::Enemy, 0, 0, 0, 0 });
+        cfg.skills.emplace("heavy", SkillDef{ "heavy", "Heavy Strike", SkillKind::Damage,
+                                              TargetRule::Enemy, 8, 14, 0, 0 });
+        cfg.skills.emplace("fire", SkillDef{ "fire", "Fire Charm", SkillKind::Damage,
+                                             TargetRule::Enemy, 10, 20, 0, 0 });
+        cfg.skills.emplace("defend", SkillDef{ "defend", "Defend", SkillKind::Defend,
+                                               TargetRule::Self, 0, 0, 0, 0 });
+        cfg.skills.emplace(
+          "heal", SkillDef{ "heal", "Heal", SkillKind::Heal, TargetRule::Ally, 6, 0, 18, 28 });
 
-        cfg.items.emplace("potion", ItemDef{ "potion", "Small Potion", 35, 10, "Restores 35 HP in battle." });
-        cfg.items.emplace("hi_potion", ItemDef{ "hi_potion", "Hi-Potion", 70, 24, "Restores 70 HP in battle." });
+        cfg.items.emplace("potion",
+                          ItemDef{ "potion", "Small Potion", 35, 10, "Restores 35 HP in battle." });
+        cfg.items.emplace("hi_potion",
+                          ItemDef{ "hi_potion", "Hi-Potion", 70, 24, "Restores 70 HP in battle." });
 
-        cfg.monsters.emplace(
-          "slime", MonsterDef{ "slime", "Green Slime", 1, 75, 10, 13, 3, 7, 12, 8, { { "potion", 1 } }, { "attack" } });
-        cfg.monsters.emplace(
-          "fox", MonsterDef{
-                   "fox", "Mountain Fox", 2, 92, 18, 16, 4, 13, 18, 12, { { "potion", 2 } }, { "attack", "heavy" } });
+        cfg.monsters.emplace("slime", MonsterDef{ "slime",
+                                                  "Green Slime",
+                                                  1,
+                                                  75,
+                                                  10,
+                                                  13,
+                                                  3,
+                                                  7,
+                                                  12,
+                                                  8,
+                                                  { { "potion", 1 } },
+                                                  { "attack" } });
+        cfg.monsters.emplace("fox", MonsterDef{ "fox",
+                                                "Mountain Fox",
+                                                2,
+                                                92,
+                                                18,
+                                                16,
+                                                4,
+                                                13,
+                                                18,
+                                                12,
+                                                { { "potion", 2 } },
+                                                { "attack", "heavy" } });
         cfg.monsters.emplace("bandit", MonsterDef{ "bandit",
                                                    "Wild Bandit",
                                                    3,
@@ -188,15 +213,18 @@ struct Config
                                                    { { "hi_potion", 1 } },
                                                    { "attack", "heavy", "heal" } });
 
-        cfg.quests.emplace("slime_hunter",
-                           QuestDef{ "slime_hunter", "Slime Hunter", "slime", 2, 20, 15, { { "potion", 1 } } });
-        cfg.quests.emplace("fox_trouble",
-                           QuestDef{ "fox_trouble", "Fox Trouble", "fox", 1, 28, 20, { { "hi_potion", 1 } } });
+        cfg.quests.emplace(
+          "slime_hunter",
+          QuestDef{ "slime_hunter", "Slime Hunter", "slime", 2, 20, 15, { { "potion", 1 } } });
+        cfg.quests.emplace(
+          "fox_trouble",
+          QuestDef{ "fox_trouble", "Fox Trouble", "fox", 1, 28, 20, { { "hi_potion", 1 } } });
 
         cfg.encounters.emplace("slime", EncounterDef{ "slime", "Single Slime", { "slime" } });
         cfg.encounters.emplace("fox", EncounterDef{ "fox", "Single Fox", { "fox" } });
         cfg.encounters.emplace("bandit", EncounterDef{ "bandit", "Single Bandit", { "bandit" } });
-        cfg.encounters.emplace("forest", EncounterDef{ "forest", "Forest Patrol", { "slime", "fox" } });
+        cfg.encounters.emplace("forest",
+                               EncounterDef{ "forest", "Forest Patrol", { "slime", "fox" } });
         cfg.encounters.emplace("camp", EncounterDef{ "camp", "Bandit Camp", { "bandit", "fox" } });
         return cfg;
     }
