@@ -252,7 +252,7 @@ void print_top_bar(Language lang, bool logged_in, bool in_battle)
     if (in_battle) {
         std::cout << "  [" << text(lang, "战斗中", "In Battle") << "]";
     }
-    std::cout << "\n\n";
+    std::cout << "\n";
 }
 
 // 将服务端标签 [server][battle][state][error] 等翻译为当前语言
@@ -470,8 +470,7 @@ void print_message_area(Language lang, const std::string& last_output)
 
     std::string translated = translate_message(lang, last_output);
 
-    // 提取 [state] 行（含中文翻译后的 [状态] 行）
-    std::vector<std::string> state_lines;
+    // 提取非状态行（[state] 行已在战斗状态区域显示，消息区域不再重复）
     std::vector<std::string> other_lines;
     {
         std::istringstream iss(translated);
@@ -480,7 +479,7 @@ void print_message_area(Language lang, const std::string& last_output)
             if (line.empty()) continue;
             if (line.find("[state]") != std::string::npos
                 || line.find("\u72b6\u6001") != std::string::npos) {  // 状态
-                state_lines.push_back(line);
+                continue;  // 跳过，战斗状态区域已单独显示
             }
             else {
                 other_lines.push_back(line);
@@ -490,11 +489,6 @@ void print_message_area(Language lang, const std::string& last_output)
 
     std::cout << "----------------------------------------\n";
     std::cout << text(lang, "[消息]", "[Messages]") << "\n";
-
-    // [state] 行优先显示在第一二行
-    for (const auto& s : state_lines) {
-        std::cout << s << "\n";
-    }
 
     // 其余消息
     for (const auto& o : other_lines) {
@@ -517,26 +511,20 @@ void print_top_categories(Language lang, const std::vector<TopCatItem>& cats, bo
 {
     clear_screen();
 
+    print_top_bar(lang, logged_in, in_battle);
+
+    // 战斗中：直接在顶栏下方显示 [state] 行
     if (in_battle) {
         std::istringstream iss(last_output);
         std::string line;
-        bool has_state = false;
         while (std::getline(iss, line)) {
-            if (line.find("HP=") != std::string::npos || line.find("hp=") != std::string::npos) {
-                if (!has_state) {
-                    std::cout << text(lang, "==== 战斗状态 ====", "==== Battle Status ====")
-                              << "\n";
-                    has_state = true;
-                }
+            if (line.find("[state]") != std::string::npos
+                || line.find("\u72b6\u6001") != std::string::npos
+                || line.find("HP ") != std::string::npos || line.find("hp ") != std::string::npos) {
                 std::cout << line << "\n";
             }
         }
-        if (has_state) {
-            std::cout << "\n";
-        }
     }
-
-    print_top_bar(lang, logged_in, in_battle);
 
     std::cout << text(lang, "-- 请选择分类 --", "-- Select Category --") << "\n\n";
 
@@ -573,29 +561,22 @@ void print_sub_menu(Language lang, const CatGroup& group, bool logged_in, bool i
 {
     clear_screen();
 
+    print_top_bar(lang, logged_in, in_battle);
+
+    // 战斗中：直接在顶栏下方显示 [state] 行
     if (in_battle) {
         std::istringstream iss(last_output);
         std::string line;
-        bool has_state = false;
         while (std::getline(iss, line)) {
-            if (line.find("HP=") != std::string::npos || line.find("hp=") != std::string::npos) {
-                if (!has_state) {
-                    std::cout << text(lang, "==== 战斗状态 ====", "==== Battle Status ====")
-                              << "\n";
-                    has_state = true;
-                }
-                std::cout << line << "\n";
+            if (line.find("[state]") != std::string::npos
+                || line.find("\u72b6\u6001") != std::string::npos
+                || line.find("HP ") != std::string::npos || line.find("hp ") != std::string::npos) {
+                std::cout << line << "\n\n";
             }
-        }
-        if (has_state) {
-            std::cout << "\n";
         }
     }
 
-    print_top_bar(lang, logged_in, in_battle);
-
-    std::cout << "-- " << text(lang, group.zh_title, group.en_title) << " --\n\n";
-
+    // 战斗命令
     constexpr int kCols = 3;
     constexpr int kColWidth = 26;
 
@@ -611,7 +592,6 @@ void print_sub_menu(Language lang, const CatGroup& group, bool logged_in, bool i
         }
         std::cout << "\n";
     }
-    std::cout << "\n";
     std::cout << " 0." << text(lang, "返回上级", "Back") << "\n\n";
 
     print_message_area(lang, last_output);
@@ -800,7 +780,13 @@ bool handle_battle_turn(Language& language, SOCKET socket_handle, std::string& l
     battle_group.items.push_back(
       { next(), "刷新状态", "Refresh", [] { return std::string("state"); } });
 
-    print_sub_menu(language, battle_group, true, true, last_output);
+    // 加锁安全读取 last_output
+    std::string output_copy;
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        output_copy = last_output;
+    }
+    print_sub_menu(language, battle_group, true, true, output_copy);
 
     const int choice = read_choice();
     if (choice == 0) {

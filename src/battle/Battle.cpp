@@ -234,7 +234,7 @@ std::string Battle::choose_ai_skill(const Fighter& fighter)
 void Battle::resolve_ready_round()
 {
     resolve_round();
-    print_state();
+    // print_state() 会在 begin_round() 中调用，这里不需要重复输出
 
     if (!winner_side().has_value()) {
         begin_round();
