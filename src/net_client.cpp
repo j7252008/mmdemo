@@ -1,14 +1,8 @@
-﻿#ifndef _WIN32
-#error "This prototype TCP client uses Winsock and currently targets Windows."
-#endif
-
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
+﻿#include "net/ITransport.h"
 
 #include <atomic>
 #include <chrono>
+#include <clocale>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -22,6 +16,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace {
 
 constexpr unsigned short kPort = 7878;
@@ -31,20 +29,6 @@ enum class Language {
     English,
 };
 
-class WinsockRuntime
-{
-public:
-    WinsockRuntime()
-    {
-        WSADATA data{};
-        if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
-            throw std::runtime_error("WSAStartup failed");
-        }
-    }
-
-    ~WinsockRuntime() { WSACleanup(); }
-};
-
 const char* text(Language language, const char* zh, const char* en)
 {
     return language == Language::Chinese ? zh : en;
@@ -52,12 +36,17 @@ const char* text(Language language, const char* zh, const char* en)
 
 void setup_console()
 {
+#ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+#else
+    std::setlocale(LC_ALL, "en_US.UTF-8");
+#endif
 }
 
 std::string lang_config_path()
 {
+#ifdef _WIN32
     const char* home = nullptr;
     home = std::getenv("USERPROFILE");
     if (!home || home[0] == '\0') {
@@ -72,6 +61,12 @@ std::string lang_config_path()
     if (home && home[0] != '\0') {
         return std::string(home) + "/.mmdemo_lang";
     }
+#else
+    const char* home = std::getenv("HOME");
+    if (home && home[0] != '\0') {
+        return std::string(home) + "/.mmdemo_lang";
+    }
+#endif
     return ".mmdemo_lang";
 }
 
@@ -144,40 +139,6 @@ Language load_or_choose_language()
     }
 }
 
-bool send_all(SOCKET socket, const std::string& text)
-{
-    size_t sent = 0;
-    while (sent < text.size()) {
-        const int chunk = send(socket, text.data() + sent, static_cast<int>(text.size() - sent), 0);
-        if (chunk == SOCKET_ERROR || chunk == 0) {
-            return false;
-        }
-        sent += static_cast<size_t>(chunk);
-    }
-    return true;
-}
-
-void receive_loop(SOCKET socket, std::atomic<bool>& running, std::string& shared_output,
-                  std::mutex& output_mutex)
-{
-    char buffer[1024];
-    while (running.load()) {
-        const int received = recv(socket, buffer, sizeof(buffer) - 1, 0);
-        if (received <= 0) {
-            running.store(false);
-            break;
-        }
-        buffer[received] = '\0';
-        // 同时输出到控制台并更新共享的 last_output
-        std::cout << "\n" << buffer;
-        std::cout.flush();
-        {
-            std::lock_guard<std::mutex> lock(output_mutex);
-            shared_output = buffer;
-        }
-    }
-}
-
 std::string trim_copy(std::string value)
 {
     while (!value.empty()
@@ -230,7 +191,11 @@ struct CatGroup
 
 void clear_screen()
 {
+#ifdef _WIN32
     system("cls");
+#else
+    system("clear");
+#endif
 }
 
 // 格式化一个菜单项为固定宽度字符串
@@ -760,8 +725,10 @@ int read_choice()
 }
 
 // 战斗中直接显示战斗命令（扁平化，不走两级菜单）
-bool handle_battle_turn(Language& language, SOCKET socket_handle, std::string& last_output,
-                        std::mutex& output_mutex, std::atomic<bool>& running, bool& in_battle)
+// transport: network transport (replaces raw SOCKET).
+bool handle_battle_turn(Language& language, mm::net::IClientTransport& transport,
+                        std::string& last_output, std::mutex& output_mutex,
+                        std::atomic<bool>& running, bool& in_battle)
 {
     CatGroup battle_group{ "战斗", "Battle" };
     int next_id = 0;
@@ -816,7 +783,7 @@ bool handle_battle_turn(Language& language, SOCKET socket_handle, std::string& l
         last_output.clear();
     }
 
-    if (!send_all(socket_handle, command + "\n")) {
+    if (!transport.send(command + "\n")) {
         return false;
     }
 
@@ -856,24 +823,19 @@ int main()
     try {
         setup_console();
         Language language = load_or_choose_language();
-        WinsockRuntime winsock;
 
-        SOCKET socket_handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (socket_handle == INVALID_SOCKET) {
-            std::cerr << text(language, "socket 创建失败\n", "socket failed\n");
+        // ---- Choose transport backend here ----
+        // To switch to another network library, just change the enum value.
+        auto transport = mm::net::create_client_transport(
+            mm::net::TransportBackend::Asio);
+        if (!transport) {
+            std::cerr << "failed to create client transport\n";
             return 1;
         }
 
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(kPort);
-        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-
-        if (connect(socket_handle, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))
-            == SOCKET_ERROR) {
+        if (!transport->connect("127.0.0.1", kPort)) {
             std::cerr << text(language, "连接失败，请先启动 mmdemo_server。\n",
                               "connect failed. Start mmdemo_server first.\n");
-            closesocket(socket_handle);
             return 1;
         }
 
@@ -885,8 +847,19 @@ int main()
         std::mutex output_mutex;
         std::string last_output;
 
-        std::thread receiver(receive_loop, socket_handle, std::ref(running), std::ref(last_output),
-                             std::ref(output_mutex));
+        // Wire transport callbacks.
+        transport->set_on_data([&](const std::string& data) {
+            std::cout << "\n" << data;
+            std::cout.flush();
+            {
+                std::lock_guard<std::mutex> lock(output_mutex);
+                last_output = data;
+            }
+        });
+
+        transport->set_on_disconnected([&]() {
+            running.store(false);
+        });
 
         bool logged_in = false;
         bool in_battle = false;
@@ -894,7 +867,7 @@ int main()
         while (running.load()) {
             // 战斗中：直接显示战斗命令界面
             if (in_battle) {
-                if (!handle_battle_turn(language, socket_handle, last_output, output_mutex, running,
+                if (!handle_battle_turn(language, *transport, last_output, output_mutex, running,
                                         in_battle)) {
                     continue;
                 }
@@ -910,7 +883,7 @@ int main()
 
             const int top_choice = read_choice();
             if (top_choice == 0) {
-                send_all(socket_handle, "quit\n");
+                transport->send("quit\n");
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 break;
             }
@@ -964,7 +937,7 @@ int main()
                 continue;
             }
 
-            if (!send_all(socket_handle, line + "\n")) {
+            if (!transport->send(line + "\n")) {
                 break;
             }
 
@@ -990,12 +963,7 @@ int main()
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        running.store(false);
-        shutdown(socket_handle, SD_BOTH);
-        closesocket(socket_handle);
-        if (receiver.joinable()) {
-            receiver.join();
-        }
+        transport->disconnect();
     }
     catch (const std::exception& ex) {
         std::cerr << "fatal: " << ex.what() << "\n";
