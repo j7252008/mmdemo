@@ -38,13 +38,13 @@ private:
     void login(const std::string& name);
     void logout(const std::string& name);
     void forfeit(const std::string& name);
-    void start_pve(const std::string& name, const std::string& encounter_id);
+    void start_pve(const std::string& name, const std::string& encounter_key);
     void queue(const std::string& name);
     void submit_action(const std::string& name, const std::string& skill,
                        const std::string& target);
-    void submit_item_action(const std::string& name, const std::string& item_id,
+    void submit_item_action(const std::string& name, const std::string& item_key,
                             const std::string& target);
-    void create_battle(const std::string& mode, std::vector<Fighter> fighters);
+    void create_battle(BattleMode mode, std::vector<Fighter> fighters);
     void finish_battle(Battle& battle);
     void grant_rewards(const Battle& battle);
     bool grant_player_reward(Player& player, int exp, int gold,
@@ -52,38 +52,38 @@ private:
     void update_quest_progress(Player& player, const std::map<std::string, int>& kills);
 
     static int exp_to_next(int level);
-    Fighter make_player_fighter(const Player& player, const std::string& side) const;
-    static Fighter make_monster_fighter(const MonsterDef& def, int index, const std::string& side);
+    Fighter make_player_fighter(const Player& player, FighterSide side) const;
+    static Fighter make_monster_fighter(const MonsterDef& def, int index, FighterSide side);
     Player* require_player(const std::string& name);
-    Battle* active_battle(const std::string& id);
+    Battle* active_battle(int id);
     void remove_from_queue(const std::string& name);
     std::string pop_waiting_opponent(const std::string& self);
 
     void print_players() const;
-    void give_item(const std::string& name, const std::string& item_id,
+    void give_item(const std::string& name, const std::string& item_key,
                    const std::string& amount_text);
     void print_inventory(const std::string& name) const;
     std::string inventory_summary(const Player& player) const;
     void print_monsters() const;
     void print_items() const;
     void print_shop() const;
-    void buy_item(const std::string& name, const std::string& item_id,
+    void buy_item(const std::string& name, const std::string& item_key,
                   const std::string& amount_text);
     void print_quest_defs() const;
     void handle_quest_command(const std::string& subcmd, const std::string& name,
-                              const std::string& quest_id);
-    void accept_quest(const std::string& name, const std::string& quest_id);
+                              const std::string& quest_key);
+    void accept_quest(const std::string& name, const std::string& quest_key);
     void print_player_quests(const std::string& name) const;
-    void claim_quest(const std::string& name, const std::string& quest_id);
+    void claim_quest(const std::string& name, const std::string& quest_key);
     std::string quest_summary(const Player& player) const;
 
     static std::string item_map_summary(const std::map<std::string, int>& items);
     static std::string drop_summary(const MonsterDef& monster);
-    static std::string join_ids(const std::vector<std::string>& values);
+    static std::string join_keys(const std::vector<std::string>& values);
 
     void print_skills() const;
     void print_state() const;
-    void print_log(const std::string& id) const;
+    void print_log(const std::string& battle_text) const;
     void save_players() const;
     void load_players();
     void print_help() const;
@@ -92,8 +92,8 @@ private:
     std::mt19937 rng_;
     std::map<std::string, Player> players_;
     std::vector<std::string> waiting_queue_;
-    std::map<std::string, std::unique_ptr<Battle>> battles_;
-    std::map<std::string, std::unique_ptr<Battle>> history_;
+    std::map<int, std::unique_ptr<Battle>> battles_;
+    std::map<int, std::unique_ptr<Battle>> history_;
     int next_battle_id_ = 1;
     std::mutex mutex_;
     std::string player_file_ = "data/players.json";

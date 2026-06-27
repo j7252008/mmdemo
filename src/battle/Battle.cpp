@@ -5,9 +5,9 @@
 
 namespace mm {
 
-Battle::Battle(std::string id, std::string mode, std::vector<Fighter> fighters,
+Battle::Battle(int id, BattleMode mode, std::vector<Fighter> fighters,
                const Config& config, std::mt19937& rng, OutputSink& out)
-  : id_(std::move(id))
+  : id_(id)
   , mode_(std::move(mode))
   , fighters_(std::move(fighters))
   , config_(config)
@@ -15,7 +15,7 @@ Battle::Battle(std::string id, std::string mode, std::vector<Fighter> fighters,
   , out_(out)
 {}
 
-const std::string& Battle::id() const
+int Battle::id() const
 {
     return id_;
 }
@@ -37,84 +37,65 @@ bool Battle::closed() const
 
 void Battle::start()
 {
-    add_event("start",
-              "Battle " + id_ + " starts: " + side_names("left") + " vs " + side_names("right"));
+    add_event("start", "Battle B" + std::to_string(id_) + " starts: "
+                         + side_names(FighterSide::Left) + " vs "
+                         + side_names(FighterSide::Right));
     begin_round();
 }
 
-bool Battle::submit_action(const std::string& player_name, const std::string& skill_id,
-                           const std::string& target_id, std::string& error)
+bool Battle::submit_action(const std::string& player_name, const std::string& skill_key,
+                           const std::string& target_text, std::string& error)
 {
-    if (closed_) {
-        error = "battle is closed";
+    Fighter* actor = active_player(player_name, error);
+    if (actor == nullptr) {
         return false;
     }
 
-    Fighter* actor = fighter_for_player(player_name);
-    if (actor == nullptr || !actor->alive()) {
-        error = "player cannot act";
-        return false;
-    }
-
-    auto skill_it = config_.skills.find(skill_id);
+    const auto skill_it = config_.skills.find(skill_key);
     if (skill_it == config_.skills.end()) {
         error = "unknown skill";
         return false;
     }
-    if (!contains(actor->skills, skill_id)) {
+    if (!contains(actor->skills, skill_key)) {
         error = "fighter cannot use skill";
         return false;
     }
 
-    Fighter* target = resolve_target(*actor, skill_it->second, target_id);
+    Fighter* target = resolve_target(*actor, skill_it->second, target_text);
     if (target == nullptr) {
         error = "no valid target";
         return false;
     }
 
-    pending_actions_[actor->id] = Action{ actor->id, skill_id, target->id };
-    out_ << "[server] action locked: " << player_name << " -> " << skill_it->second.name << " / "
-         << target->name << "\n";
-
-    if (all_ready()) {
-        resolve_ready_round();
-    }
+    lock_action(Action{ actor->id, skill_key, target->id, "", false },
+                "[server] action locked: " + player_name + " -> " + skill_it->second.name + " / "
+                  + target->name);
     return true;
 }
 
-bool Battle::submit_item_action(const std::string& player_name, const std::string& item_id,
-                                const std::string& target_id, std::string& error)
+bool Battle::submit_item_action(const std::string& player_name, const std::string& item_key,
+                                const std::string& target_text, std::string& error)
 {
-    if (closed_) {
-        error = "battle is closed";
+    Fighter* actor = active_player(player_name, error);
+    if (actor == nullptr) {
         return false;
     }
 
-    Fighter* actor = fighter_for_player(player_name);
-    if (actor == nullptr || !actor->alive()) {
-        error = "player cannot act";
-        return false;
-    }
-
-    const auto item_it = config_.items.find(item_id);
+    const auto item_it = config_.items.find(item_key);
     if (item_it == config_.items.end()) {
         error = "unknown item";
         return false;
     }
 
-    Fighter* target = target_id.empty() ? actor : fighter_by_id(target_id);
+    Fighter* target = target_text.empty() ? actor : fighter_by_text(target_text);
     if (target == nullptr || !target->alive() || target->side != actor->side) {
         error = "no valid item target";
         return false;
     }
 
-    pending_actions_[actor->id] = Action{ actor->id, "", target->id, item_id, true };
-    out_ << "[server] action locked: " << player_name << " -> use " << item_it->second.name << " / "
-         << target->name << "\n";
-
-    if (all_ready()) {
-        resolve_ready_round();
-    }
+    lock_action(Action{ actor->id, "", target->id, item_key, true },
+                "[server] action locked: " + player_name + " -> use " + item_it->second.name
+                  + " / " + target->name);
     return true;
 }
 
@@ -146,7 +127,7 @@ void Battle::print_state() const
 {
     out_ << "[state]";
     for (const auto& fighter : fighters_) {
-        out_ << " " << fighter.id << "=" << fighter.name << " HP " << fighter.hp << "/"
+        out_ << " " << fighter.name << "#" << fighter.id << " HP " << fighter.hp << "/"
              << fighter.max_hp << " MP " << fighter.mp << "/" << fighter.max_mp;
     }
     out_ << "\n";
@@ -170,7 +151,7 @@ std::vector<std::string> Battle::player_names() const
     return names;
 }
 
-std::string Battle::mode() const
+BattleMode Battle::mode() const
 {
     return mode_;
 }
@@ -196,11 +177,11 @@ void Battle::submit_ai_actions()
 {
     for (auto& fighter : fighters_) {
         if (!fighter.is_player && fighter.alive()) {
-            const std::string skill_id = choose_ai_skill(fighter);
-            const SkillDef& skill = config_.skills.at(skill_id);
+            const std::string skill_key = choose_ai_skill(fighter);
+            const SkillDef& skill = config_.skills.at(skill_key);
             Fighter* target = resolve_target(fighter, skill, "");
             if (target != nullptr) {
-                pending_actions_[fighter.id] = Action{ fighter.id, skill_id, target->id };
+                pending_actions_[fighter.id] = Action{ fighter.id, skill_key, target->id, "", false };
             }
         }
     }
@@ -215,11 +196,11 @@ std::string Battle::choose_ai_skill(const Fighter& fighter)
     }
 
     std::vector<std::string> available;
-    for (const auto& skill_id : fighter.skills) {
-        const auto skill_it = config_.skills.find(skill_id);
+    for (const auto& skill_key : fighter.skills) {
+        const auto skill_it = config_.skills.find(skill_key);
         if (skill_it != config_.skills.end() && fighter.mp >= skill_it->second.mp_cost
             && skill_it->second.kind != SkillKind::Defend) {
-            available.push_back(skill_id);
+            available.push_back(skill_key);
         }
     }
 
@@ -272,13 +253,13 @@ void Battle::resolve_round()
 
         if (action_it->second.use_item) {
             Fighter* target = fighter_by_id(action_it->second.target_id);
-            const auto item_it = config_.items.find(action_it->second.item_id);
+            const auto item_it = config_.items.find(action_it->second.item_key);
             if (target != nullptr && target->alive() && item_it != config_.items.end()) {
                 resolve_item_action(*actor, *target, item_it->second);
             }
         }
         else {
-            const SkillDef& skill = config_.skills.at(action_it->second.skill_id);
+            const SkillDef& skill = config_.skills.at(action_it->second.skill_key);
             Fighter* target = fighter_by_id(action_it->second.target_id);
             if (target == nullptr || !target->alive()) {
                 target = resolve_target(*actor, skill, "");
@@ -351,24 +332,21 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
 
 bool Battle::all_ready() const
 {
-    for (const auto& fighter : fighters_) {
-        if (fighter.is_player && fighter.alive()
-            && pending_actions_.find(fighter.id) == pending_actions_.end()) {
-            return false;
-        }
-    }
-    return true;
+    return std::all_of(fighters_.begin(), fighters_.end(), [this](const Fighter& fighter) {
+        return !fighter.is_player || !fighter.alive()
+               || pending_actions_.find(fighter.id) != pending_actions_.end();
+    });
 }
 
 Fighter* Battle::resolve_target(const Fighter& actor, const SkillDef& skill,
-                                const std::string& requested_id)
+                                const std::string& requested_text)
 {
     if (skill.target == TargetRule::Self) {
         return fighter_by_id(actor.id);
     }
 
-    if (!requested_id.empty()) {
-        Fighter* requested = fighter_by_id(requested_id);
+    if (!requested_text.empty()) {
+        Fighter* requested = fighter_by_text(requested_text);
         if (requested != nullptr && requested->alive()) {
             if (skill.target == TargetRule::Enemy && requested->side != actor.side) {
                 return requested;
@@ -405,27 +383,57 @@ Fighter* Battle::resolve_target(const Fighter& actor, const SkillDef& skill,
     return candidates.front();
 }
 
+Fighter* Battle::active_player(const std::string& player_name, std::string& error)
+{
+    if (closed_) {
+        error = "battle is closed";
+        return nullptr;
+    }
+
+    Fighter* fighter = fighter_for_player(player_name);
+    if (fighter == nullptr || !fighter->alive()) {
+        error = "player cannot act";
+        return nullptr;
+    }
+
+    return fighter;
+}
+
+void Battle::lock_action(Action action, const std::string& message)
+{
+    pending_actions_[action.actor_id] = std::move(action);
+    out_ << message << "\n";
+
+    if (all_ready()) {
+        resolve_ready_round();
+    }
+}
+
 Fighter* Battle::fighter_for_player(const std::string& player_name)
 {
-    for (auto& fighter : fighters_) {
-        if (fighter.is_player && fighter.player_name == player_name) {
-            return &fighter;
-        }
-    }
-    return nullptr;
+    const auto it = std::find_if(fighters_.begin(), fighters_.end(), [&](const Fighter& fighter) {
+        return fighter.is_player && fighter.player_name == player_name;
+    });
+    return it == fighters_.end() ? nullptr : &*it;
 }
 
-Fighter* Battle::fighter_by_id(const std::string& id)
+Fighter* Battle::fighter_by_id(int id)
 {
-    for (auto& fighter : fighters_) {
-        if (fighter.id == id || fighter.name == id || fighter.player_name == id) {
-            return &fighter;
-        }
-    }
-    return nullptr;
+    const auto it = std::find_if(fighters_.begin(), fighters_.end(), [&](const Fighter& fighter) {
+        return fighter.id == id;
+    });
+    return it == fighters_.end() ? nullptr : &*it;
 }
 
-std::string Battle::side_names(const std::string& side) const
+Fighter* Battle::fighter_by_text(const std::string& text)
+{
+    const auto it = std::find_if(fighters_.begin(), fighters_.end(), [&](const Fighter& fighter) {
+        return fighter.command_key == text || fighter.name == text || fighter.player_name == text;
+    });
+    return it == fighters_.end() ? nullptr : &*it;
+}
+
+std::string Battle::side_names(FighterSide side) const
 {
     std::string out;
     for (const auto& fighter : fighters_) {
@@ -439,7 +447,7 @@ std::string Battle::side_names(const std::string& side) const
     return out;
 }
 
-std::optional<std::string> Battle::winner_side() const
+std::optional<FighterSide> Battle::winner_side() const
 {
     bool left_alive = false;
     bool right_alive = false;
@@ -447,7 +455,7 @@ std::optional<std::string> Battle::winner_side() const
         if (!fighter.alive()) {
             continue;
         }
-        if (fighter.side == "left") {
+        if (fighter.side == FighterSide::Left) {
             left_alive = true;
         }
         else {
@@ -456,10 +464,10 @@ std::optional<std::string> Battle::winner_side() const
     }
 
     if (left_alive && !right_alive) {
-        return "left";
+        return FighterSide::Left;
     }
     if (right_alive && !left_alive) {
-        return "right";
+        return FighterSide::Right;
     }
     return std::nullopt;
 }

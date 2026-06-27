@@ -1,11 +1,19 @@
 #define MMDEMO_NO_MAIN
 #include "game_core.h"
+#include "net/GameSessionHandler.h"
+#include "net/ITransport.h"
 #include "net/SessionCommand.h"
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -21,6 +29,52 @@ bool contains(const std::string& haystack, const std::string& needle)
 {
     return haystack.find(needle) != std::string::npos;
 }
+
+struct TcpTestClient
+{
+    std::unique_ptr<mm::net::IClientTransport> transport;
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::string received;
+    bool disconnected = false;
+
+    explicit TcpTestClient(std::unique_ptr<mm::net::IClientTransport> client)
+      : transport(std::move(client))
+    {
+        transport->set_on_data([this](const std::string& text) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                received += text;
+            }
+            cv.notify_all();
+        });
+        transport->set_on_disconnected([this]() {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                disconnected = true;
+            }
+            cv.notify_all();
+        });
+    }
+
+    bool wait_for(const std::string& needle, std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return cv.wait_for(lock, timeout, [&]() { return contains(received, needle); });
+    }
+
+    bool wait_disconnected(std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return cv.wait_for(lock, timeout, [&]() { return disconnected; });
+    }
+
+    std::string snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return received;
+    }
+};
 
 void expect_contains(TestContext& ctx, const std::string& label, const std::string& text,
                      const std::string& needle)
@@ -50,6 +104,21 @@ void expect_not_contains(TestContext& ctx, const std::string& label, const std::
               << "  unexpected: " << needle << "\n"
               << "  actual:\n"
               << text << "\n";
+}
+
+void expect_true(TestContext& ctx, const std::string& label, bool value,
+                 const std::string& detail = "")
+{
+    if (value) {
+        std::cout << "[PASS] " << label << "\n";
+        return;
+    }
+
+    ++ctx.failed;
+    std::cout << "[FAIL] " << label << "\n";
+    if (!detail.empty()) {
+        std::cout << "  detail:\n" << detail << "\n";
+    }
 }
 
 std::string run(mm::GameServer& server, const std::vector<std::string>& commands)
@@ -135,6 +204,106 @@ void test_tcp_session_command_translation(TestContext& ctx)
                  mm::is_valid_tcp_command_without_login("help") ? "yes" : "no", "yes");
     expect_equal(ctx, "tcp prelogin pve rejected",
                  mm::is_valid_tcp_command_without_login("pve") ? "yes" : "no", "no");
+}
+
+void test_tcp_transport_integration(TestContext& ctx)
+{
+    mm::GameServer game("test_players_tcp_transport.json", 53);
+    mm::net::GameSessionHandler sessions(game);
+
+    std::unique_ptr<mm::net::IServerTransport> server;
+    uint16_t port = 0;
+    {
+        std::ostringstream bind_errors;
+        auto* old_cerr = std::cerr.rdbuf(bind_errors.rdbuf());
+        for (uint16_t candidate = 20100; candidate < 20120; ++candidate) {
+            auto attempt = mm::net::create_server_transport(mm::net::TransportBackend::Asio);
+            if (attempt != nullptr && attempt->listen(candidate)) {
+                server = std::move(attempt);
+                port = candidate;
+                break;
+            }
+        }
+        std::cerr.rdbuf(old_cerr);
+    }
+
+    if (server == nullptr) {
+        std::cout << "[SKIP] tcp transport integration: local socket listen unavailable\n";
+        return;
+    }
+    expect_true(ctx, "tcp server binds local port", true);
+
+    server->set_on_connected([&](mm::net::ConnId conn) {
+        server->send(conn, sessions.on_connect(conn));
+    });
+    server->set_on_data([&](mm::net::ConnId conn, const std::string& line) {
+        const auto result = sessions.on_message(conn, line);
+        if (!result.response.empty()) {
+            server->broadcast(result.response);
+        }
+        if (result.disconnect_client) {
+            server->send(conn, "[server] goodbye\n");
+            server->disconnect(conn);
+        }
+    });
+    server->set_on_disconnected([&](mm::net::ConnId conn) {
+        const std::string text = sessions.on_disconnect(conn);
+        if (!text.empty()) {
+            server->broadcast(text);
+        }
+    });
+
+    std::thread server_thread([&]() { server->run(); });
+
+    TcpTestClient alice(mm::net::create_client_transport(mm::net::TransportBackend::Asio));
+    TcpTestClient bob(mm::net::create_client_transport(mm::net::TransportBackend::Asio));
+
+    const bool alice_connected = alice.transport->connect("127.0.0.1", port);
+    const bool bob_connected = bob.transport->connect("127.0.0.1", port);
+    expect_true(ctx, "tcp clients connect", alice_connected && bob_connected);
+    if (!alice_connected || !bob_connected) {
+        alice.transport->disconnect();
+        bob.transport->disconnect();
+        server->shutdown();
+        if (server_thread.joinable()) {
+            server_thread.join();
+        }
+        return;
+    }
+
+    const auto timeout = std::chrono::milliseconds(2000);
+    expect_true(ctx, "tcp alice greeting", alice.wait_for("mmdemo TCP text client connected", timeout),
+                alice.snapshot());
+    expect_true(ctx, "tcp bob greeting", bob.wait_for("mmdemo TCP text client connected", timeout),
+                bob.snapshot());
+
+    alice.transport->send("login alice");
+    expect_true(ctx, "tcp alice session bind", alice.wait_for("[session] bound to alice", timeout),
+                alice.snapshot());
+
+    bob.transport->send("login bob");
+    expect_true(ctx, "tcp bob session bind", bob.wait_for("[session] bound to bob", timeout),
+                bob.snapshot());
+
+    alice.transport->send("queue");
+    bob.transport->send("queue");
+    expect_true(ctx, "tcp alice sees pvp start", alice.wait_for("Battle B1 starts: alice vs bob", timeout),
+                alice.snapshot());
+    expect_true(ctx, "tcp bob sees pvp start", bob.wait_for("Battle B1 starts: alice vs bob", timeout),
+                bob.snapshot());
+
+    alice.transport->send("quit");
+    expect_true(ctx, "tcp alice receives goodbye", alice.wait_for("[server] goodbye", timeout),
+                alice.snapshot());
+    expect_true(ctx, "tcp alice disconnects", alice.wait_disconnected(timeout), alice.snapshot());
+    expect_true(ctx, "tcp bob sees alice logout", bob.wait_for("alice logged out", timeout),
+                bob.snapshot());
+
+    bob.transport->disconnect();
+    server->shutdown();
+    if (server_thread.joinable()) {
+        server_thread.join();
+    }
 }
 
 void test_pve_drop(TestContext& ctx)
@@ -223,7 +392,7 @@ void test_pvp_matchmaking_and_actions(TestContext& ctx)
 void test_multi_monster_encounter(TestContext& ctx)
 {
     // Multi-monster encounters verify aggregate rewards and kill-map quest updates.
-    mm::GameServer server;
+    mm::GameServer server("test_players_multi_monster.json", 19);
     const std::string output = run(server, {
                                              "login alice",
                                              "give alice hi_potion 1",
@@ -231,8 +400,8 @@ void test_multi_monster_encounter(TestContext& ctx)
                                              "pve alice forest",
                                              "heavy alice fox2",
                                              "heavy alice fox2",
-                                             "heavy alice fox2",
                                              "use alice hi_potion",
+                                             "heavy alice fox2",
                                              "attack alice",
                                              "attack alice",
                                              "attack alice",
@@ -396,6 +565,94 @@ void test_json_config_loading(TestContext& ctx)
     std::remove(player_file);
 }
 
+void test_config_and_savefile_resilience(TestContext& ctx)
+{
+    // Custom skill tables replace defaults, but battle fallback still requires Attack to exist.
+    const char* config_file = "test_config_missing_attack.json";
+    const char* player_file = "test_players_bad_entry.json";
+    std::remove(config_file);
+    std::remove(player_file);
+
+    {
+        std::ofstream file(config_file, std::ios::trunc);
+        file << R"json({
+  "skills": [
+    {"id": "spark", "name": "Spark", "kind": "damage", "target": "enemy", "mp_cost": 0, "power": 5}
+  ],
+  "monsters": [
+    {"id": "dummy", "name": "Training Dummy", "level": 1, "max_hp": 5, "max_mp": 0, "attack": 1, "defense": 0, "speed": 1, "exp": 1, "gold": 1, "skills": ["missing"]}
+  ],
+  "encounters": [
+    {"id": "trial", "name": "Fallback Trial", "monsters": ["dummy"]}
+  ]
+})json";
+    }
+
+    {
+        mm::GameServer server(player_file, 43, config_file);
+        const std::string output = run(server, {
+                                                 "login alice",
+                                                 "pve alice trial",
+                                                 "attack alice",
+                                               });
+        expect_contains(ctx, "config missing attack fallback", output, "Training Dummy#1 falls.");
+    }
+
+    {
+        std::ofstream file(player_file, std::ios::trunc);
+        file << R"json([
+  {"name": "not_an_object"}
+])json";
+    }
+
+    {
+        mm::GameServer server(player_file, 43);
+        const std::string output = run(server, {
+                                                 "load",
+                                               });
+        expect_contains(ctx, "bad save root rejected", output, "invalid player json");
+    }
+
+    {
+        std::ofstream file(player_file, std::ios::trunc);
+        file << R"json({
+  "players": [
+    {"name": "broken", "inventory": {"potion": "many"}},
+    {"name": "alice", "level": 2, "exp": 3, "gold": 4, "inventory": {"potion": 1}}
+  ]
+})json";
+    }
+
+    {
+        mm::GameServer server(player_file, 43);
+        const std::string output = run(server, {
+                                                 "load",
+                                                 "players",
+                                               });
+        expect_contains(ctx, "bad save entry skipped", output,
+                        "skipped invalid player entry");
+        expect_contains(ctx, "good save entry loaded", output, "alice level=2");
+        expect_not_contains(ctx, "bad save entry absent", output, "broken level=");
+    }
+
+    const char* blocked_parent = "test_players_blocked_parent";
+    {
+        std::ofstream file(blocked_parent, std::ios::trunc);
+        file << "not a directory\n";
+        mm::GameServer server(std::string(blocked_parent) + "/players.json", 43);
+        const std::string output = run(server, {
+                                                 "login alice",
+                                                 "save",
+                                               });
+        expect_contains(ctx, "execute catches command exception", output,
+                        "[error] command failed:");
+    }
+
+    std::remove(config_file);
+    std::remove(player_file);
+    std::remove(blocked_parent);
+}
+
 void test_battle_end_detection(TestContext& ctx)
 {
     // Regression: detect_battle_end() must match the exact strings produced by
@@ -478,6 +735,11 @@ void test_validation_errors(TestContext& ctx)
                                              "login alice",
                                              "use alice potion",
                                              "buy alice hi_potion 1",
+                                             "buy alice potion many",
+                                             "give alice potion many",
+                                             "buy alice potion 2147483647",
+                                             "give alice potion 2147483647",
+                                             "give alice potion 1",
                                              "quest claim alice slime_hunter",
                                            });
 
@@ -490,6 +752,10 @@ void test_validation_errors(TestContext& ctx)
     expect_contains(ctx, "unknown battle log", output, "unknown battle: B99");
     expect_contains(ctx, "use item outside battle", output, "alice is not in battle");
     expect_contains(ctx, "buy without gold", output, "alice lacks gold");
+    expect_contains(ctx, "invalid buy amount", output, "invalid amount: many");
+    expect_contains(ctx, "invalid give amount", output, "invalid amount: many");
+    expect_contains(ctx, "oversized buy amount", output, "amount is too large: 2147483647");
+    expect_contains(ctx, "oversized give amount", output, "amount is too large: 1");
     expect_not_contains(ctx, "no save/load test leakage", output, "test_players_save_load");
 }
 
@@ -500,6 +766,7 @@ int main()
     TestContext ctx;
     test_command_catalog_and_introspection(ctx);
     test_tcp_session_command_translation(ctx);
+    test_tcp_transport_integration(ctx);
     test_pve_drop(ctx);
     test_inventory_and_item_use(ctx);
     test_active_battle_skills_state_and_log(ctx);
@@ -508,6 +775,7 @@ int main()
     test_quest_and_shop(ctx);
     test_save_and_load(ctx);
     test_json_config_loading(ctx);
+    test_config_and_savefile_resilience(ctx);
     test_forfeit_logout_reconnect(ctx);
     test_battle_end_detection(ctx);
     test_validation_errors(ctx);

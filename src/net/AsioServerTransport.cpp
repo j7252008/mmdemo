@@ -6,11 +6,13 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace mm {
 namespace net {
@@ -26,11 +28,17 @@ struct AsioServerTransport::Impl
     tcp::acceptor acceptor_{io_context_};
     std::atomic<bool> running_{false};
     std::atomic<ConnId> next_id_{1};
+    std::string bind_address_ = "127.0.0.1";
+    uint16_t port_ = 0;
 
     struct Client
     {
         tcp::socket socket;
-        std::string pending;          // accumulated partial-line data
+        std::string pending;              // accumulated partial-line data
+        std::deque<std::string> outgoing; // serialized by io_context_
+        bool writing = false;
+        bool close_after_write = false;
+        bool notify_disconnect = true;
 
         explicit Client(tcp::socket&& s) : socket(std::move(s)) {}
     };
@@ -42,6 +50,14 @@ struct AsioServerTransport::Impl
     OnServerConnected    on_connected_;
     OnServerData         on_data_;
     OnServerDisconnected on_disconnected_;
+
+    static std::string with_newline(std::string text)
+    {
+        if (text.empty() || text.back() != '\n') {
+            text += '\n';
+        }
+        return text;
+    }
 
     // ----  async accept loop  ------------------------------------------
     void start_accept()
@@ -96,62 +112,126 @@ struct AsioServerTransport::Impl
             });
     }
 
-    // ----  per-client disconnect  --------------------------------------
-    void handle_disconnect(ConnId id)
+    // ----  async per-client write queue  -------------------------------
+    void enqueue_text(ConnId id, const std::shared_ptr<Client>& client, std::string text)
     {
+        if (!running_.load() || client->close_after_write) {
+            return;
+        }
+
+        client->outgoing.push_back(std::move(text));
+        if (!client->writing) {
+            start_write(id, client);
+        }
+    }
+
+    void start_write(ConnId id, const std::shared_ptr<Client>& client)
+    {
+        if (client->outgoing.empty()) {
+            client->writing = false;
+            if (client->close_after_write) {
+                close_client(id);
+            }
+            return;
+        }
+
+        client->writing = true;
+        asio::async_write(client->socket, asio::buffer(client->outgoing.front()),
+            [this, id, client](asio::error_code ec, std::size_t /*bytes*/) {
+                if (ec) {
+                    close_client(id);
+                    return;
+                }
+
+                client->outgoing.pop_front();
+                start_write(id, client);
+            });
+    }
+
+    void close_after_pending_writes(ConnId id)
+    {
+        std::shared_ptr<Client> client;
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex_);
+            auto it = clients_.find(id);
+            if (it == clients_.end()) {
+                return;
+            }
+            client = it->second;
+        }
+
+        asio::post(io_context_, [this, id, client]() {
+            client->notify_disconnect = false;
+            client->close_after_write = true;
+            if (!client->writing && client->outgoing.empty()) {
+                close_client(id);
+            }
+        });
+    }
+
+    // ----  per-client disconnect  --------------------------------------
+    void close_client(ConnId id)
+    {
+        bool notify = false;
         {
             std::lock_guard<std::mutex> lock(clients_mutex_);
             auto it = clients_.find(id);
             if (it != clients_.end()) {
+                notify = it->second->notify_disconnect;
                 asio::error_code ec;
                 it->second->socket.close(ec);
                 clients_.erase(it);
             }
         }
-        if (on_disconnected_) {
+        if (notify && on_disconnected_) {
             on_disconnected_(id);
         }
     }
 
-    // ----  broadcast (must not hold clients_mutex_ across callbacks) ----
+    void handle_disconnect(ConnId id)
+    {
+        close_client(id);
+    }
+
+    // ----  broadcast (queue writes without blocking io_context_) --------
     void broadcast_text(const std::string& text)
     {
-        std::string msg = text;
-        if (msg.empty() || msg.back() != '\n') {
-            msg += '\n';
+        const std::string msg = with_newline(text);
+        std::vector<std::pair<ConnId, std::shared_ptr<Client>>> clients;
+
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex_);
+            clients.reserve(clients_.size());
+            for (const auto& pair : clients_) {
+                clients.emplace_back(pair.first, pair.second);
+            }
         }
 
-        std::lock_guard<std::mutex> lock(clients_mutex_);
-        for (auto it = clients_.begin(); it != clients_.end();) {
-            asio::error_code ec;
-            asio::write(it->second->socket, asio::buffer(msg), ec);
-            if (ec) {
-                it->second->socket.close(ec);
-                it = clients_.erase(it);
-            }
-            else {
-                ++it;
-            }
+        for (const auto& pair : clients) {
+            asio::post(io_context_, [this, id = pair.first, client = pair.second, msg]() {
+                enqueue_text(id, client, msg);
+            });
         }
     }
 
     // ----  single-client send  -----------------------------------------
     bool send_text(ConnId id, const std::string& text)
     {
-        std::lock_guard<std::mutex> lock(clients_mutex_);
-        auto it = clients_.find(id);
-        if (it == clients_.end()) {
-            return false;
+        std::shared_ptr<Client> client;
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex_);
+            auto it = clients_.find(id);
+            if (it == clients_.end()) {
+                return false;
+            }
+            client = it->second;
         }
 
-        std::string msg = text;
-        if (msg.empty() || msg.back() != '\n') {
-            msg += '\n';
-        }
-
-        asio::error_code ec;
-        asio::write(it->second->socket, asio::buffer(msg), ec);
-        return !ec;
+        std::string msg = with_newline(text);
+        asio::post(io_context_, [this, id, client, msg = std::move(msg)]() mutable {
+            enqueue_text(id, client, std::move(msg));
+        });
+        return true;
     }
 };
 
@@ -196,6 +276,8 @@ bool AsioServerTransport::listen(uint16_t port, const std::string& bind_addr)
         return false;
     }
 
+    impl_->bind_address_ = bind_addr;
+    impl_->port_ = port;
     return true;
 }
 
@@ -227,7 +309,8 @@ void AsioServerTransport::run()
 
     impl_->start_accept();
 
-    std::cout << "mmdemo server (Asio) listening on 127.0.0.1:7878\n";
+    std::cout << "mmdemo server (Asio) listening on " << impl_->bind_address_ << ":"
+              << impl_->port_ << "\n";
 
     // Block until shutdown() calls io_context_.stop().
     impl_->io_context_.run();
@@ -245,13 +328,7 @@ void AsioServerTransport::broadcast(const std::string& text)
 
 void AsioServerTransport::disconnect(ConnId conn)
 {
-    std::lock_guard<std::mutex> lock(impl_->clients_mutex_);
-    auto it = impl_->clients_.find(conn);
-    if (it != impl_->clients_.end()) {
-        asio::error_code ec;
-        it->second->socket.close(ec);
-        impl_->clients_.erase(it);
-    }
+    impl_->close_after_pending_writes(conn);
 }
 
 void AsioServerTransport::set_on_connected(OnServerConnected cb)

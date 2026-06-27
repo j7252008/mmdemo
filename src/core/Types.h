@@ -8,7 +8,7 @@
 
 namespace mm {
 
-// Static skill behavior loaded into Config. Battle actions reference skills by id.
+// Static skill behavior loaded into Config. Battle actions reference skills by command key.
 enum class SkillKind {
     Damage,
     Heal,
@@ -21,10 +21,20 @@ enum class TargetRule {
     Self,
 };
 
+enum class BattleMode {
+    Pve,
+    Pvp,
+};
+
+enum class FighterSide {
+    Left,
+    Right,
+};
+
 // Template data: these definitions are shared by all players and battles.
 struct SkillDef
 {
-    std::string id;
+    std::string key;
     std::string name;
     SkillKind kind = SkillKind::Damage;
     TargetRule target = TargetRule::Enemy;
@@ -37,7 +47,7 @@ struct SkillDef
 // Monster templates double as reward tables for PVE settlement.
 struct MonsterDef
 {
-    std::string id;
+    std::string key;
     std::string name;
     int level = 1;
     int max_hp = 1;
@@ -55,7 +65,7 @@ struct MonsterDef
 // price.
 struct ItemDef
 {
-    std::string id;
+    std::string key;
     std::string name;
     int heal = 0;
     int price = 0;
@@ -65,7 +75,7 @@ struct ItemDef
 // Quest templates currently track monster kills and pay out exp/gold/items.
 struct QuestDef
 {
-    std::string id;
+    std::string key;
     std::string name;
     std::string target_monster;
     int required_kills = 0;
@@ -84,7 +94,7 @@ struct QuestState
 // PVE entry point. Single-monster encounters keep old commands compatible; groups model dungeons.
 struct EncounterDef
 {
-    std::string id;
+    std::string key;
     std::string name;
     std::vector<std::string> monsters;
 };
@@ -98,7 +108,7 @@ struct Player
     int gold = 0;
     bool online = true;
     bool queued = false;
-    std::string battle_id;
+    int battle_id = 0;
     std::map<std::string, int> inventory;
     std::map<std::string, QuestState> quests;
 };
@@ -106,11 +116,12 @@ struct Player
 // Runtime combatant snapshot. Players and monsters are normalized into fighters inside a Battle.
 struct Fighter
 {
-    std::string id;
+    int id = 0;
     std::string name;
-    std::string side;
+    std::string command_key;
+    FighterSide side = FighterSide::Left;
     std::string player_name;
-    std::string monster_id;
+    std::string monster_key;
     bool is_player = false;
     int level = 1;
     int hp = 1;
@@ -131,10 +142,10 @@ struct Fighter
 // A locked-in action for the current round. Player actions and monster AI share this form.
 struct Action
 {
-    std::string actor_id;
-    std::string skill_id;
-    std::string target_id;
-    std::string item_id;
+    int actor_id = 0;
+    std::string skill_key;
+    int target_id = 0;
+    std::string item_key;
     bool use_item = false;
 };
 

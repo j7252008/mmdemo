@@ -66,15 +66,19 @@ void load_skills(Config& cfg, const json& root)
     std::map<std::string, SkillDef> skills;
     for (const auto& item : root.at("skills")) {
         SkillDef def;
-        def.id = item.at("id").get<std::string>();
-        def.name = item.value("name", def.id);
+        def.key = item.at("id").get<std::string>();
+        def.name = item.value("name", def.key);
         def.kind = parse_skill_kind(item.value("kind", "damage"));
         def.target = parse_target_rule(item.value("target", "enemy"));
         def.mp_cost = item.value("mp_cost", 0);
         def.power = item.value("power", 0);
         def.min_heal = item.value("min_heal", 0);
         def.max_heal = item.value("max_heal", 0);
-        skills.emplace(def.id, std::move(def));
+        skills.emplace(def.key, std::move(def));
+    }
+    if (skills.find("attack") == skills.end()) {
+        skills.emplace("attack", SkillDef{ "attack", "Attack", SkillKind::Damage,
+                                           TargetRule::Enemy, 0, 0, 0, 0 });
     }
     cfg.skills = std::move(skills);
 }
@@ -88,12 +92,12 @@ void load_items(Config& cfg, const json& root)
     std::map<std::string, ItemDef> items;
     for (const auto& item : root.at("items")) {
         ItemDef def;
-        def.id = item.at("id").get<std::string>();
-        def.name = item.value("name", def.id);
+        def.key = item.at("id").get<std::string>();
+        def.name = item.value("name", def.key);
         def.heal = item.value("heal", 0);
         def.price = item.value("price", 0);
         def.description = item.value("description", "");
-        items.emplace(def.id, std::move(def));
+        items.emplace(def.key, std::move(def));
     }
     cfg.items = std::move(items);
 }
@@ -107,8 +111,8 @@ void load_monsters(Config& cfg, const json& root)
     std::map<std::string, MonsterDef> monsters;
     for (const auto& item : root.at("monsters")) {
         MonsterDef def;
-        def.id = item.at("id").get<std::string>();
-        def.name = item.value("name", def.id);
+        def.key = item.at("id").get<std::string>();
+        def.name = item.value("name", def.key);
         def.level = item.value("level", 1);
         def.max_hp = item.value("max_hp", 1);
         def.max_mp = item.value("max_mp", 0);
@@ -119,7 +123,7 @@ void load_monsters(Config& cfg, const json& root)
         def.gold = item.value("gold", 0);
         def.drops = read_int_map(item.value("drops", json::object()));
         def.skills = read_string_vector(item.value("skills", json::array({ "attack" })));
-        monsters.emplace(def.id, std::move(def));
+        monsters.emplace(def.key, std::move(def));
     }
     cfg.monsters = std::move(monsters);
 }
@@ -133,14 +137,14 @@ void load_quests(Config& cfg, const json& root)
     std::map<std::string, QuestDef> quests;
     for (const auto& item : root.at("quests")) {
         QuestDef def;
-        def.id = item.at("id").get<std::string>();
-        def.name = item.value("name", def.id);
+        def.key = item.at("id").get<std::string>();
+        def.name = item.value("name", def.key);
         def.target_monster = item.value("target_monster", "");
         def.required_kills = item.value("required_kills", 0);
         def.reward_exp = item.value("reward_exp", 0);
         def.reward_gold = item.value("reward_gold", 0);
         def.reward_items = read_int_map(item.value("reward_items", json::object()));
-        quests.emplace(def.id, std::move(def));
+        quests.emplace(def.key, std::move(def));
     }
     cfg.quests = std::move(quests);
 }
@@ -154,10 +158,10 @@ void load_encounters(Config& cfg, const json& root)
     std::map<std::string, EncounterDef> encounters;
     for (const auto& item : root.at("encounters")) {
         EncounterDef def;
-        def.id = item.at("id").get<std::string>();
-        def.name = item.value("name", def.id);
+        def.key = item.at("id").get<std::string>();
+        def.name = item.value("name", def.key);
         def.monsters = read_string_vector(item.value("monsters", json::array()));
-        encounters.emplace(def.id, std::move(def));
+        encounters.emplace(def.key, std::move(def));
     }
     cfg.encounters = std::move(encounters);
 }

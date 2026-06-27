@@ -62,7 +62,7 @@ add_executable(mmdemo_tests
     src/tests.cpp
 )
 
-target_link_libraries(mmdemo_tests PRIVATE mmdemo_core)
+target_link_libraries(mmdemo_tests PRIVATE mmdemo_core mmdemo_net)
 
 if (MSVC)
     target_compile_options(mmdemo_core PRIVATE /W4 /permissive- /utf-8)
