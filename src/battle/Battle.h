@@ -76,7 +76,8 @@ private:
     std::string side_names(FighterSide side) const;
     std::optional<FighterSide> winner_side() const;
     void finish();
-    void add_event(std::string kind, std::string text);
+    static const char* event_kind_name(BattleEventKind kind);
+    void add_event(BattleEventKind kind, std::string text);
 
     int id_ = 0;
     BattleMode mode_;

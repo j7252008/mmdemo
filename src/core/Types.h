@@ -31,6 +31,19 @@ enum class FighterSide {
     Right,
 };
 
+enum class BattleEventKind {
+    Start,
+    RoundStart,
+    Item,
+    Fail,
+    Defend,
+    Heal,
+    Damage,
+    Death,
+    Forfeit,
+    End,
+};
+
 // Template data: these definitions are shared by all players and battles.
 struct SkillDef
 {
@@ -153,7 +166,7 @@ struct Action
 struct Event
 {
     int round = 0;
-    std::string kind;
+    BattleEventKind kind = BattleEventKind::Start;
     std::string text;
 };
 

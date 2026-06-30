@@ -37,9 +37,9 @@ bool Battle::closed() const
 
 void Battle::start()
 {
-    add_event("start", "Battle B" + std::to_string(id_) + " starts: "
-                         + side_names(FighterSide::Left) + " vs "
-                         + side_names(FighterSide::Right));
+    add_event(BattleEventKind::Start, "Battle B" + std::to_string(id_) + " starts: "
+                                       + side_names(FighterSide::Left) + " vs "
+                                       + side_names(FighterSide::Right));
     begin_round();
 }
 
@@ -118,7 +118,7 @@ bool Battle::forfeit_player(const std::string& player_name, std::string& error)
 
     fighter->hp = 0;
     pending_actions_.erase(fighter->id);
-    add_event("forfeit", fighter->name + " forfeits the battle.");
+    add_event(BattleEventKind::Forfeit, fighter->name + " forfeits the battle.");
     finish();
     return true;
 }
@@ -136,7 +136,8 @@ void Battle::print_state() const
 void Battle::print_log() const
 {
     for (const auto& event : events_) {
-        out_ << "[log][" << event.round << "][" << event.kind << "] " << event.text << "\n";
+        out_ << "[log][" << event.round << "][" << event_kind_name(event.kind) << "] "
+             << event.text << "\n";
     }
 }
 
@@ -164,7 +165,7 @@ void Battle::begin_round()
         fighter.defending = false;
     }
 
-    add_event("round_start", "Round " + std::to_string(round_) + " begins.");
+    add_event(BattleEventKind::RoundStart, "Round " + std::to_string(round_) + " begins.");
     submit_ai_actions();
     print_state();
 
@@ -278,8 +279,8 @@ void Battle::resolve_item_action(Fighter& actor, Fighter& target, const ItemDef&
 {
     const int before = target.hp;
     target.hp = clamp_int(target.hp + item.heal, 0, target.max_hp);
-    add_event("item", actor.name + " uses " + item.name + " on " + target.name + ": +"
-                        + std::to_string(target.hp - before) + " HP.");
+    add_event(BattleEventKind::Item, actor.name + " uses " + item.name + " on " + target.name
+                                      + ": +" + std::to_string(target.hp - before) + " HP.");
 }
 
 void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& requested_skill)
@@ -288,7 +289,8 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
     Fighter* resolved_target = &target;
 
     if (actor.mp < skill->mp_cost) {
-        add_event("fail", actor.name + " tried " + skill->name + " but lacked MP, using Attack.");
+        add_event(BattleEventKind::Fail,
+                  actor.name + " tried " + skill->name + " but lacked MP, using Attack.");
         skill = &config_.skills.at("attack");
         resolved_target = resolve_target(actor, *skill, "");
         if (resolved_target == nullptr) {
@@ -298,7 +300,7 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
 
     if (skill->kind == SkillKind::Defend) {
         actor.defending = true;
-        add_event("defend", actor.name + " braces for impact.");
+        add_event(BattleEventKind::Defend, actor.name + " braces for impact.");
         return;
     }
 
@@ -309,8 +311,9 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
         const int amount = dist(rng_) + actor.level * 2;
         const int before = resolved_target->hp;
         resolved_target->hp = clamp_int(resolved_target->hp + amount, 0, resolved_target->max_hp);
-        add_event("heal", actor.name + " uses " + skill->name + " on " + resolved_target->name
-                            + ": +" + std::to_string(resolved_target->hp - before) + " HP.");
+        add_event(BattleEventKind::Heal,
+                  actor.name + " uses " + skill->name + " on " + resolved_target->name + ": +"
+                    + std::to_string(resolved_target->hp - before) + " HP.");
         return;
     }
 
@@ -322,11 +325,12 @@ void Battle::resolve_action(Fighter& actor, Fighter& target, const SkillDef& req
     }
 
     resolved_target->hp = clamp_int(resolved_target->hp - damage, 0, resolved_target->max_hp);
-    add_event("damage", actor.name + " uses " + skill->name + " on " + resolved_target->name + ": "
-                          + std::to_string(damage) + " damage.");
+    add_event(BattleEventKind::Damage,
+              actor.name + " uses " + skill->name + " on " + resolved_target->name + ": "
+                + std::to_string(damage) + " damage.");
 
     if (!resolved_target->alive()) {
-        add_event("death", resolved_target->name + " falls.");
+        add_event(BattleEventKind::Death, resolved_target->name + " falls.");
     }
 }
 
@@ -476,14 +480,41 @@ void Battle::finish()
 {
     const auto winner = winner_side();
     if (winner.has_value()) {
-        add_event("end", side_names(*winner) + " wins.");
+        add_event(BattleEventKind::End, side_names(*winner) + " wins.");
     }
     closed_ = true;
 }
 
-void Battle::add_event(std::string kind, std::string text)
+const char* Battle::event_kind_name(BattleEventKind kind)
 {
-    events_.push_back(Event{ round_, std::move(kind), text });
+    switch (kind) {
+        case BattleEventKind::Start:
+            return "start";
+        case BattleEventKind::RoundStart:
+            return "round_start";
+        case BattleEventKind::Item:
+            return "item";
+        case BattleEventKind::Fail:
+            return "fail";
+        case BattleEventKind::Defend:
+            return "defend";
+        case BattleEventKind::Heal:
+            return "heal";
+        case BattleEventKind::Damage:
+            return "damage";
+        case BattleEventKind::Death:
+            return "death";
+        case BattleEventKind::Forfeit:
+            return "forfeit";
+        case BattleEventKind::End:
+            return "end";
+    }
+    return "unknown";
+}
+
+void Battle::add_event(BattleEventKind kind, std::string text)
+{
+    events_.push_back(Event{ round_, kind, text });
     out_ << "[battle] " << text << "\n";
 }
 

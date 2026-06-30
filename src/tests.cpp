@@ -170,6 +170,140 @@ void expect_equal(TestContext& ctx, const std::string& label, const std::string&
               << "  actual: " << actual << "\n";
 }
 
+void expect_equal_int(TestContext& ctx, const std::string& label, int actual, int expected)
+{
+    if (actual == expected) {
+        std::cout << "[PASS] " << label << "\n";
+        return;
+    }
+
+    ++ctx.failed;
+    std::cout << "[FAIL] " << label << "\n"
+              << "  expected: " << expected << "\n"
+              << "  actual: " << actual << "\n";
+}
+
+void expect_event_kind(TestContext& ctx, const std::string& label,
+                       const std::vector<mm::Event>& events, mm::BattleEventKind kind)
+{
+    for (const auto& event : events) {
+        if (event.kind == kind) {
+            std::cout << "[PASS] " << label << "\n";
+            return;
+        }
+    }
+
+    ++ctx.failed;
+    std::cout << "[FAIL] " << label << "\n";
+}
+
+mm::Fighter make_test_fighter(int id, std::string name, std::string command_key,
+                              mm::FighterSide side, bool is_player)
+{
+    mm::Fighter fighter;
+    fighter.id = id;
+    fighter.name = std::move(name);
+    fighter.command_key = std::move(command_key);
+    fighter.side = side;
+    fighter.player_name = is_player ? fighter.name : "";
+    fighter.monster_key = is_player ? "" : "slime";
+    fighter.is_player = is_player;
+    fighter.level = 1;
+    fighter.hp = is_player ? 120 : 1;
+    fighter.max_hp = fighter.hp;
+    fighter.mp = 30;
+    fighter.max_mp = 30;
+    fighter.attack = is_player ? 18 : 1;
+    fighter.defense = 0;
+    fighter.speed = is_player ? 20 : 1;
+    fighter.exp = is_player ? 0 : 1;
+    fighter.gold = is_player ? 0 : 1;
+    fighter.skills = { "attack" };
+    return fighter;
+}
+
+void test_battle_event_kind_and_runtime_ids(TestContext& ctx)
+{
+    // Battle internals should use enum/int identifiers while keeping text commands/logs stable.
+    mm::Config config = mm::Config::make_default();
+
+    {
+        std::vector<mm::Fighter> fighters;
+        fighters.push_back(
+          make_test_fighter(1, "alice", "alice", mm::FighterSide::Left, true));
+        fighters.push_back(
+          make_test_fighter(101, "Green Slime#1", "slime1", mm::FighterSide::Right, false));
+
+        std::mt19937 rng(5);
+        std::ostringstream output;
+        mm::OutputSink out(output);
+        mm::Battle battle(7, mm::BattleMode::Pve, std::move(fighters), config, rng, out);
+
+        battle.start();
+        expect_equal_int(ctx, "battle runtime id is int", battle.id(), 7);
+        expect_true(ctx, "battle mode is enum", battle.mode() == mm::BattleMode::Pve);
+        expect_event_kind(ctx, "battle event kind start", battle.events(), mm::BattleEventKind::Start);
+        expect_event_kind(ctx, "battle event kind round start", battle.events(),
+                          mm::BattleEventKind::RoundStart);
+
+        std::string error;
+        const bool accepted = battle.submit_action("alice", "attack", "slime1", error);
+        expect_true(ctx, "battle command key resolves target", accepted, error);
+        expect_true(ctx, "battle closes after enum-id victory", battle.closed());
+        expect_event_kind(ctx, "battle event kind damage", battle.events(),
+                          mm::BattleEventKind::Damage);
+        expect_event_kind(ctx, "battle event kind death", battle.events(), mm::BattleEventKind::Death);
+        expect_event_kind(ctx, "battle event kind end", battle.events(), mm::BattleEventKind::End);
+
+        battle.print_log();
+        const std::string text = output.str();
+        expect_contains(ctx, "battle log start kind text", text, "[log][0][start]");
+        expect_contains(ctx, "battle log damage kind text", text, "[damage]");
+        expect_contains(ctx, "battle display id remains B-prefixed", text, "Battle B7 starts");
+    }
+
+    {
+        std::vector<mm::Fighter> fighters;
+        auto alice = make_test_fighter(1, "alice", "alice", mm::FighterSide::Left, true);
+        alice.hp = 20;
+        alice.max_hp = 120;
+        fighters.push_back(alice);
+        fighters.push_back(
+          make_test_fighter(101, "Green Slime#1", "slime1", mm::FighterSide::Right, false));
+
+        std::mt19937 rng(6);
+        std::ostringstream output;
+        mm::OutputSink out(output);
+        mm::Battle battle(8, mm::BattleMode::Pve, std::move(fighters), config, rng, out);
+
+        battle.start();
+        std::string error;
+        const bool accepted = battle.submit_item_action("alice", "potion", "alice", error);
+        expect_true(ctx, "battle item action accepted", accepted, error);
+        expect_event_kind(ctx, "battle event kind item", battle.events(), mm::BattleEventKind::Item);
+    }
+
+    {
+        std::vector<mm::Fighter> fighters;
+        fighters.push_back(
+          make_test_fighter(1, "alice", "alice", mm::FighterSide::Left, true));
+        fighters.push_back(
+          make_test_fighter(101, "Green Slime#1", "slime1", mm::FighterSide::Right, false));
+
+        std::mt19937 rng(7);
+        std::ostringstream output;
+        mm::OutputSink out(output);
+        mm::Battle battle(9, mm::BattleMode::Pvp, std::move(fighters), config, rng, out);
+
+        battle.start();
+        std::string error;
+        const bool accepted = battle.forfeit_player("alice", error);
+        expect_true(ctx, "battle forfeit accepted", accepted, error);
+        expect_event_kind(ctx, "battle event kind forfeit", battle.events(),
+                          mm::BattleEventKind::Forfeit);
+    }
+}
+
 void test_tcp_session_command_translation(TestContext& ctx)
 {
     // TCP shorthand must be deterministic and must reject attempts to act as another player.
@@ -765,6 +899,7 @@ int main()
 {
     TestContext ctx;
     test_command_catalog_and_introspection(ctx);
+    test_battle_event_kind_and_runtime_ids(ctx);
     test_tcp_session_command_translation(ctx);
     test_tcp_transport_integration(ctx);
     test_pve_drop(ctx);
